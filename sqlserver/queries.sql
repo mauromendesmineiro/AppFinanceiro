@@ -272,3 +272,5 @@ FROM fact_Salario AS S
 INNER JOIN dim_Usuario AS U 
     ON S.ID_Usuario = U.ID_Usuario;
 GO
+
+SELECT TOP 1 * FROM dim_Categoria

@@ -17,7 +17,6 @@ DATABASE = 'financeiro'
 DRIVER = '{ODBC Driver 17 for SQL Server}' 
 CONNECTION_STRING = f'DRIVER={DRIVER};SERVER={SERVER};DATABASE={DATABASE};Trusted_Connection=yes;'
 
-# --- FUNÇÃO DE CONSULTA (ATUALIZADA) ---
 def get_connection():
     # Esta função agora usa a CONNECTION_STRING definida acima
     conn = pyodbc.connect(CONNECTION_STRING)
@@ -48,8 +47,6 @@ def consultar_dados(tabela_ou_view, usar_view=False):
         if conn: conn.close()
         return pd.DataFrame()
 
-
-# --- FUNÇÃO DE INSERÇÃO (MANTIDA) ---
 def inserir_dados(tabela, dados, campos):
     try:
         conn = pyodbc.connect(CONNECTION_STRING)
@@ -71,9 +68,6 @@ def inserir_dados(tabela, dados, campos):
     finally:
         if 'conn' in locals() and conn:
             conn.close()
-
-
-# --- FORMULÁRIOS DE CADASTRO ---
 
 def formulario_tipo_transacao():
     st.header("Cadastro de Tipo de Transação")
@@ -98,7 +92,6 @@ def formulario_tipo_transacao():
     st.subheader("Registros Existentes")
     df_tipos = consultar_dados("dim_TipoTransacao")
     st.dataframe(df_tipos, use_container_width=True)
-
 
 def formulario_categoria():
     st.header("Cadastro de Categoria")
@@ -137,7 +130,6 @@ def formulario_categoria():
     st.subheader("Registros Existentes")
     df_categorias = consultar_dados("dim_Categoria")
     st.dataframe(df_categorias, use_container_width=True)
-
 
 def formulario_subcategoria():
     st.header("Cadastro de Subcategoria")
@@ -180,7 +172,6 @@ def formulario_subcategoria():
     df_subcategorias = consultar_dados("dim_Subcategoria")
     st.dataframe(df_subcategorias, use_container_width=True)
 
-
 def formulario_usuario():
     st.header("Cadastro de Usuário")
     
@@ -208,18 +199,14 @@ def formulario_usuario():
 def formulario_salario():
     st.header("Registro de Salário")
 
-    # 1. Consulta o Usuário para o Dropdown (Não precisa de alteração aqui, pois o formulário é o mesmo)
-    # Usamos a tabela dim_Usuario diretamente (usar_view=False) para obter o ID original
-    # Você deve ter esta função/tabela para cadastrar:
+    # 1. Consulta o Usuário para o Dropdown
     try:
         df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
     except Exception:
-        # Se a função/tabela não for encontrada, evite quebrar o app
         df_usuarios = pd.DataFrame(columns=['ID_Usuario', 'DSC_Nome'])
 
     if df_usuarios.empty:
         st.warning("Primeiro, cadastre pelo menos um Usuário na aba 'Usuário'.")
-        # Retorna para evitar erro no formulário
         if 'consultar_dados' not in globals():
             st.error("ERRO: A função 'consultar_dados' não está definida ou a tabela 'dim_Usuario' está vazia.")
             return
@@ -246,12 +233,14 @@ def formulario_salario():
             if valor_salario > 0:
                 id_usuario = usuarios_dict[usuario_selecionado_nome]
                 
-                # Assume que a função inserir_dados está definida
-                # inserir_dados(
-                #     tabela="fact_Salario", 
-                #     dados=(id_usuario, valor_salario, data_recebimento, observacao),
-                #     campos=("ID_Usuario", "VL_Salario", "DT_Recebimento", "DSC_Observacao")
-                # )
+                # --- CORREÇÃO CRÍTICA: FUNÇÃO DE INSERÇÃO DESCOMENTADA ---
+                inserir_dados(
+                    tabela="fact_Salario", 
+                    dados=(id_usuario, valor_salario, data_recebimento, observacao),
+                    campos=("ID_Usuario", "VL_Salario", "DT_Recebimento", "DSC_Observacao")
+                )
+                # --------------------------------------------------------
+                
                 st.success(f"Salário de R${valor_salario:.2f} registrado para {usuario_selecionado_nome}!")
             else:
                 st.warning("O Valor do Salário deve ser maior que zero.")
@@ -587,7 +576,287 @@ def exibir_detalhe_rateio():
         }),
         use_container_width=True
     )
-# --- INTERFACE PRINCIPAL COM MENU (ATUALIZADA) ---
+
+def buscar_transacao_por_id(id_transacao):
+    conn = get_connection() # Assuma que get_connection() retorna a conexão pyodbc
+    cursor = conn.cursor()
+    
+    # Query para selecionar todos os campos da transação
+    query = """
+    SELECT 
+        ID_Transacao, DT_DataTransacao, DSC_TipoTransacao, DSC_CategoriaTransacao, 
+        DSC_SubcategoriaTransacao, VL_Transacao, DSC_Transacao, CD_QuemPagou, 
+        CD_EDividido, CD_FoiDividido
+    FROM 
+        stg_Transacoes 
+    WHERE 
+        ID_Transacao = ?
+    """
+    
+    try:
+        cursor.execute(query, id_transacao)
+        # Busca o primeiro (e único) resultado
+        row = cursor.fetchone()
+        
+        if row:
+            # Converte a tupla de resultados em um dicionário para fácil acesso no Streamlit
+            columns = [column[0] for column in cursor.description]
+            return dict(zip(columns, row))
+        return None
+    except pyodbc.Error as ex:
+        st.error(f"Erro ao buscar transação: {ex}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+def atualizar_transacao_por_id(id_transacao, novo_valor, nova_data, novo_tipo, nova_categoria, 
+                               nova_subcategoria, novo_pagador, nova_descricao, 
+                               novo_e_dividido, novo_foi_dividido):
+    conn = get_connection() # Assuma que get_connection() retorna a conexão pyodbc
+    cursor = conn.cursor()
+    
+    # Comando SQL para atualizar os campos (Verificado com seu schema)
+    command = """
+    UPDATE stg_Transacoes SET 
+        VL_Transacao = ?, 
+        DT_DataTransacao = ?,
+        DSC_TipoTransacao = ?,
+        DSC_CategoriaTransacao = ?,
+        DSC_SubcategoriaTransacao = ?,
+        CD_QuemPagou = ?,
+        DSC_Transacao = ?,
+        CD_EDividido = ?,
+        CD_FoiDividido = ?
+        -- As colunas ID_TipoTransacao, ID_Categoria, ID_Subcategoria não são atualizadas aqui.
+        -- Se precisar atualizá-las, você precisará buscá-los antes de chamar esta função.
+    WHERE 
+        ID_Transacao = ?
+    """
+    
+    # Os parâmetros devem ser passados na mesma ordem que os "?" no SQL
+    params = (
+        novo_valor, 
+        nova_data, 
+        novo_tipo, 
+        nova_categoria,
+        nova_subcategoria, 
+        novo_pagador,
+        nova_descricao,
+        novo_e_dividido,
+        novo_foi_dividido,
+        id_transacao  # O ID é o último parâmetro para a cláusula WHERE
+    )
+
+    try:
+        cursor.execute(command, params)
+        conn.commit()
+        
+        # Invalida o cache do Streamlit para que a tabela de transações seja recarregada
+        st.cache_data.clear() 
+        
+        return True # Sucesso
+    except pyodbc.Error as ex:
+        # Exibe o erro exato do pyodbc
+        st.error(f"Erro ao atualizar transação no banco de dados: {ex}") 
+        return False # Falha
+    finally:
+        cursor.close()
+        conn.close()
+
+def exibir_formulario_edicao(id_transacao):
+    st.subheader(f"2. Editando Transação ID: {id_transacao}")
+
+    # 1. BUSCAR DADOS ATUAIS DA TRANSAÇÃO
+    dados_atuais = buscar_transacao_por_id(id_transacao)
+    
+    if not dados_atuais:
+        st.error("Não foi possível carregar os dados desta transação.")
+        return
+    
+    # 2. BUSCAR DADOS PARA OS DROPDOWNS (DIMENSÕES)
+    
+    # Usuários (dim_Usuario) - Para o dropdown "Quem Pagou"
+    df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
+    usuarios_nomes = df_usuarios['DSC_Nome'].tolist() if not df_usuarios.empty and 'DSC_Nome' in df_usuarios.columns else []
+    
+    # Categorias (dim_Categoria) - CORRIGIDO: USANDO DSC_CategoriaTransacao
+    df_categorias = consultar_dados("dim_Categoria", usar_view=False)
+    categorias_nomes = df_categorias['DSC_CategoriaTransacao'].tolist() if not df_categorias.empty and 'DSC_CategoriaTransacao' in df_categorias.columns else []
+
+    # Subcategorias (dim_Subcategoria) - ASSUMINDO DSC_SubcategoriaTransacao
+    df_subcategorias = consultar_dados("dim_Subcategoria", usar_view=False)
+    subcategorias_nomes = df_subcategorias['DSC_SubcategoriaTransacao'].tolist() if not df_subcategorias.empty and 'DSC_SubcategoriaTransacao' in df_subcategorias.columns else []
+    
+    
+    # 3. PREPARAR VALORES PADRÃO
+    
+    # O DT_DataTransacao é retornado como objeto datetime
+    data_atual_dt = dados_atuais['DT_DataTransacao'].date() if isinstance(dados_atuais['DT_DataTransacao'], datetime.datetime) else dados_atuais['DT_DataTransacao']
+
+    # O Tipo de Transação deve usar uma lista fixa (Receita/Despesa)
+    tipos_transacao = ['Despesas', 'Receitas'] # Use a sua lista real
+    
+    # 4. FORMULÁRIO PRÉ-PREENCHIDO
+    with st.form("edicao_transacao_form"):
+        # LINHA 1: Data, Tipo, Usuário (Quem Registrou)
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            nova_data = st.date_input("Data da Transação:", value=data_atual_dt)
+            
+        with col2:
+            novo_tipo = st.selectbox("Tipo de Transação:", 
+                                     tipos_transacao, 
+                                     index=tipos_transacao.index(dados_atuais['DSC_TipoTransacao']))
+
+        with col3:
+            # Usuário que Registrou (CD_QuemRegistrou é o campo que você deve ter)
+            novo_usuario_registro = st.text_input("Usuário (Quem Registrou):", value=dados_atuais.get('CD_QuemRegistrou', 'Não Informado'), disabled=True) 
+
+        # LINHA 2: Categoria, Subcategoria, Valor
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            # Garante que a Categoria atual está na lista de opções (fundamental para preenchimento)
+            if dados_atuais['DSC_CategoriaTransacao'] not in categorias_nomes:
+                 categorias_nomes.append(dados_atuais['DSC_CategoriaTransacao'])
+
+            nova_categoria = st.selectbox("Categoria:", 
+                                          categorias_nomes, 
+                                          index=categorias_nomes.index(dados_atuais['DSC_CategoriaTransacao']))
+
+        with col5:
+            # Garante que a Subcategoria atual está na lista de opções
+            if dados_atuais['DSC_SubcategoriaTransacao'] not in subcategorias_nomes:
+                 subcategorias_nomes.append(dados_atuais['DSC_SubcategoriaTransacao'])
+
+            novo_subcategoria = st.selectbox("Subcategoria:", 
+                                             subcategorias_nomes, 
+                                             index=subcategorias_nomes.index(dados_atuais['DSC_SubcategoriaTransacao']))
+            
+        with col6:
+            # CORREÇÃO CRÍTICA: Converter o valor DECIMAL (do DB) para float, para evitar o StreamlitMixedNumericTypesError
+            novo_valor = st.number_input("Valor da Transação:", value=float(dados_atuais['VL_Transacao']), min_value=0.01, format="%.2f")
+        
+        # LINHA 3: Descrição Detalhada
+        nova_descricao = st.text_area("Descrição Detalhada:", value=dados_atuais['DSC_Transacao'])
+
+        # LINHA 4: Controle de Pagamento
+        st.markdown("##### Controle de Pagamento")
+        col7, col8, col9 = st.columns(3)
+        
+        with col7:
+            # Quem Pagou (usa a lista de Usuários)
+            if dados_atuais['CD_QuemPagou'] not in usuarios_nomes:
+                 usuarios_nomes.append(dados_atuais['CD_QuemPagou'])
+
+            novo_pagador = st.selectbox("Quem Pagou (Nome/Apelido):", 
+                                         usuarios_nomes, 
+                                         index=usuarios_nomes.index(dados_atuais['CD_QuemPagou']))
+
+        with col8:
+            # 'S' ou 'N'
+            opcoes_divisao = ('N', 'S')
+            novo_e_dividido = st.radio("Essa transação será dividida?", 
+                                       opcoes_divisao, 
+                                       index=opcoes_divisao.index(dados_atuais['CD_EDividido']), 
+                                       horizontal=True)
+        
+        with col9:
+            # 'S' ou 'N'
+            opcoes_acerto = ('N', 'S')
+            novo_foi_dividido = st.radio("A transação foi acertada/saldada?", 
+                                         opcoes_acerto, 
+                                         index=opcoes_acerto.index(dados_atuais['CD_FoiDividido']), 
+                                         horizontal=True)
+
+        submitted = st.form_submit_button("Salvar Correção")
+
+        if submitted:
+            # 5. CHAMADA DA FUNÇÃO DE ATUALIZAÇÃO SQL
+            sucesso = atualizar_transacao_por_id(
+                id_transacao, 
+                novo_valor, 
+                nova_data, 
+                novo_tipo, 
+                nova_categoria, 
+                novo_subcategoria, 
+                novo_pagador,
+                nova_descricao,
+                novo_e_dividido,
+                novo_foi_dividido
+            )
+            
+            if sucesso:
+                st.success(f"Transação {id_transacao} atualizada com sucesso!")
+                st.rerun() 
+            else:
+                st.error("Erro ao atualizar a transação. Verifique a conexão com o banco.")
+
+def editar_transacao():
+    st.header("Correção de Transações")
+
+    # ----------------------------------------------------------------------
+    # A) TABELA DE VISUALIZAÇÃO
+    # ----------------------------------------------------------------------
+    st.subheader("1. Tabela de Transações Registradas")
+
+    # Consulta a tabela de transações
+    df_transacoes = consultar_dados("stg_Transacoes")
+    
+    if df_transacoes.empty:
+        st.info("Nenhuma transação registrada para editar.")
+        return
+
+    # Renomeação simplificada para o usuário escolher (Incluindo o ID)
+    df_exibicao = df_transacoes.rename(columns={
+        'ID_Transacao': 'ID', # Mantenha o ID visível e em primeiro
+        'DT_DataTransacao': 'Data',
+        'DSC_Transacao': 'Descrição',
+        'VL_Transacao': 'Valor',
+        'CD_QuemPagou': 'Pagador'
+    })[['ID', 'Data', 'Descrição', 'Valor', 'Pagador', 'CD_EDividido', 'CD_FoiDividido']]
+
+    # Exibe a tabela COMPLETA, apenas para visualização (sem modo de seleção)
+    st.dataframe(
+        df_exibicao, 
+        hide_index=True, 
+        use_container_width=True
+    )
+    
+    st.markdown("---")
+    
+    # ----------------------------------------------------------------------
+    # B) CAMPO DE SELEÇÃO MANUAL
+    # ----------------------------------------------------------------------
+    st.subheader("2. Insira o ID para Editar")
+    
+    # Lista de IDs disponíveis para seleção no campo (formatado como string para o selectbox)
+    lista_ids = [''] + df_exibicao['ID'].astype(str).tolist()
+    
+    # Permite que o usuário selecione o ID
+    id_selecionado_str = st.selectbox(
+        "Selecione o ID da transação que deseja corrigir na lista acima:",
+        options=lista_ids,
+        index=0 # Começa com vazio
+    )
+
+    # ----------------------------------------------------------------------
+    # C) LÓGICA DE CARREGAMENTO DO FORMULÁRIO
+    # ----------------------------------------------------------------------
+    
+    if id_selecionado_str and id_selecionado_str != '':
+        try:
+            # Converte o ID para o tipo numérico (presumivelmente int, como no seu DB)
+            id_transacao_selecionada = int(id_selecionado_str) 
+            
+            # Chama a função para exibir o formulário de edição
+            exibir_formulario_edicao(id_transacao_selecionada)
+        
+        except ValueError:
+            st.error("Erro: O ID selecionado não é um número válido.")
+    else:
+        st.info("O formulário de edição aparecerá aqui após a seleção do ID.")
 
 if 'menu_selecionado' not in st.session_state:
     st.session_state.menu_selecionado = "Registrar Transação"
@@ -597,7 +866,7 @@ def main():
     st.sidebar.title("Menu")
     
     # ----------------------------------------------------
-    # 1. BOTÃO DE REGISTRO DE FATO (NO TOPO)
+    # 1. BOTÃO DE REGISTRO DE FATO
     # ----------------------------------------------------
     
     st.sidebar.subheader("Transações")
@@ -607,21 +876,30 @@ def main():
     if st.sidebar.button("💰 Registrar Salário", key="btn_fact_salario"):
         st.session_state.menu_selecionado = "Salário"
 
-    st.sidebar.markdown("---") # Linha separadora para visualização
+    st.sidebar.markdown("---") # Linha separadora
 
     # ----------------------------------------------------
-    # 2. BOTÕES DE ANÁLISE (NOVO BLOCO)
+    # 2. BOTÕES DE ANÁLISE
     # ----------------------------------------------------
     st.sidebar.subheader("Análises e Saldos")
     
-    # NOVO BOTÃO DE ACERTO
     if st.sidebar.button("📊 Acerto de Contas", key="btn_analise_acerto"):
         st.session_state.menu_selecionado = "Acerto de Contas"
         
     st.sidebar.markdown("---")
+    
+    # ----------------------------------------------------
+    # 3. BOTÕES DE MANUTENÇÃO E CORREÇÃO (NOVO BLOCO)
+    # ----------------------------------------------------
+    st.sidebar.subheader("Manutenção de Dados")
+    
+    if st.sidebar.button("✏️ Corrigir Transação", key="btn_corrigir_transacao"): # <-- NOVO BOTÃO
+        st.session_state.menu_selecionado = "Corrigir Transação"
+        
+    st.sidebar.markdown("---")
 
     # ----------------------------------------------------
-    # 3. BOTÕES DE CADASTRO DIMENSIONAL
+    # 4. BOTÕES DE CADASTRO DIMENSIONAL
     # ----------------------------------------------------
     
     # Cria o agrupador que se expande e recolhe
@@ -643,7 +921,7 @@ def main():
                 st.session_state.menu_selecionado = nome_opcao
 
     # ----------------------------------------------------
-    # 4. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
+    # 5. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
     # ----------------------------------------------------
     
     # Exibe o formulário com base na opção armazenada no estado da sessão
@@ -655,6 +933,8 @@ def main():
         formulario_transacao()
     elif opcao_atual == "Salário":
         formulario_salario()
+    elif opcao_atual == "Corrigir Transação": # <-- NOVO ELIF
+        editar_transacao() # <-- Chama a função que criamos
     elif opcao_atual == "Tipos de Transação":
         formulario_tipo_transacao()
     elif opcao_atual == "Categorias":
