@@ -186,3 +186,76 @@ FROM fact_Salario AS S
 INNER JOIN dim_Usuario AS U
     ON S.ID_Usuario = U.ID_Usuario;
 GO
+
+CREATE OR ALTER VIEW vw_AcertoDetalhe AS
+SELECT T.DT_DataTransacao,
+    T.DSC_TipoTransacao,
+    T.DSC_CategoriaTransacao,
+    T.DSC_SubcategoriaTransacao,
+    T.DSC_Transacao,
+    T.VL_Transacao AS VL_TotalTransacao,
+    T.CD_QuemPagou,
+    R.NomeUsuario AS CD_QuemDeve,
+    ROUND((T.VL_Transacao * R.VL_Rateio), 2) AS VL_Proporcional,
+    ROUND(
+        (CASE WHEN T.CD_QuemPagou = R.NomeUsuario THEN T.VL_Transacao ELSE 0.00 END) 
+        - 
+        (T.VL_Transacao * R.VL_Rateio)
+    , 2) AS VL_AcertoTransacao
+FROM stg_Transacoes AS T
+INNER JOIN vw_Rateio AS R
+    ON YEAR(T.DT_DataTransacao) = R.Ano
+    AND MONTH(T.DT_DataTransacao) = R.Mes
+WHERE T.CD_EDividido = 'S'
+AND T.CD_FoiDividido = 'N'
+AND R.NomeUsuario <> T.CD_QuemPagou
+GO
+
+CREATE OR ALTER VIEW vw_AcertoMensal AS
+    SELECT YEAR(DT_DataTransacao) AS Ano,
+        MONTH(DT_DataTransacao) AS Mes,
+        CD_QuemDeve,
+        SUM(VL_AcertoTransacao) AS VL_SaldoAcertoMensal
+    FROM vw_AcertoDetalhe
+    GROUP BY YEAR(DT_DataTransacao), MONTH(DT_DataTransacao), CD_QuemDeve;
+    GO
+
+CREATE OR ALTER VIEW vw_AcertoTotal AS
+SELECT CD_QuemDeve AS NomeUsuario,
+    SUM(VL_SaldoAcertoMensal) AS VL_SaldoTotal
+FROM vw_AcertoMensal
+GROUP BY CD_QuemDeve;
+GO
+
+CREATE OR ALTER VIEW vw_AcertoMensal AS
+SELECT YEAR(T.DT_DataTransacao) AS Ano,
+    MONTH(T.DT_DataTransacao) AS Mes,
+    R.NomeUsuario AS CD_QuemDeve,
+    SUM(
+        (CASE WHEN T.CD_QuemPagou = R.NomeUsuario THEN T.VL_Transacao ELSE 0.00 END)
+        -
+        (T.VL_Transacao * R.VL_Rateio)
+    ) AS VL_SaldoAcertoMensal
+FROM stg_Transacoes AS T
+INNER JOIN vw_Rateio AS R 
+    ON YEAR(T.DT_DataTransacao) = R.Ano
+    AND MONTH(T.DT_DataTransacao) = R.Mes
+WHERE T.CD_EDividido = 'S' AND T.CD_FoiDividido = 'N'
+GROUP BY YEAR(T.DT_DataTransacao), MONTH(T.DT_DataTransacao), R.NomeUsuario;
+GO
+
+CREATE OR ALTER VIEW vw_AcertoTotal
+AS
+SELECT R.NomeUsuario AS NomeUsuario,
+    SUM(
+        (CASE WHEN T.CD_QuemPagou = R.NomeUsuario THEN T.VL_Transacao ELSE 0.00 END)
+        -
+        (T.VL_Transacao * R.VL_Rateio)
+    ) AS VL_SaldoTotal
+FROM stg_Transacoes AS T
+INNER JOIN vw_Rateio AS R 
+    ON YEAR(T.DT_DataTransacao) = R.Ano 
+    AND MONTH(T.DT_DataTransacao) = R.Mes
+WHERE T.CD_EDividido = 'S' AND T.CD_FoiDividido = 'N'
+GROUP BY R.NomeUsuario;
+GO

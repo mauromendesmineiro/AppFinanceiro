@@ -3,6 +3,12 @@ import pyodbc
 import pandas as pd
 import datetime
 
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(
+    layout="wide",  # Define a largura máxima como a largura do navegador
+    initial_sidebar_state="auto"
+)
+
 # --- CONFIGURAÇÃO DA CONEXÃO (MANTENHA SEU AJUSTE AQUI!) ---
 # Lembre-se: Se você instalou o SQLEXPRESS, ajuste o SERVER para o nome correto,
 # ex: f'DRIVER={DRIVER};SERVER=NOME_DO_SEU_COMPUTADOR\SQLEXPRESS;...'
@@ -12,30 +18,35 @@ DRIVER = '{ODBC Driver 17 for SQL Server}'
 CONNECTION_STRING = f'DRIVER={DRIVER};SERVER={SERVER};DATABASE={DATABASE};Trusted_Connection=yes;'
 
 # --- FUNÇÃO DE CONSULTA (ATUALIZADA) ---
-@st.cache_data
-def consultar_dados(tabela, usar_view=True):
-    """Consulta e retorna todos os dados de uma View (vw_{tabela}) ou Tabela."""
+def get_connection():
+    # Esta função agora usa a CONNECTION_STRING definida acima
+    conn = pyodbc.connect(CONNECTION_STRING)
+    return conn
+
+@st.cache_data(ttl=600)
+def consultar_dados(tabela_ou_view, usar_view=False):
+    conn = get_connection()
     
-    nome_da_fonte = tabela
-    # Se usar_view=True, consulta a View com o prefixo 'vw_'
-    if usar_view:
-        nome_da_fonte = f"vw_{tabela}" 
-    
-    conn = None
+    # ----------------------------------------------------
+    # Lógica de montagem da query SIMPLIFICADA E CORRIGIDA
+    # Agora, tabela_ou_view DEVE conter o prefixo (vw_, dim_, stg_)
+    # ----------------------------------------------------
+    sql_query = f"SELECT * FROM {tabela_ou_view}" 
+
     try:
-        conn = pyodbc.connect(CONNECTION_STRING)
-        
-        sql_query = f"SELECT * FROM {nome_da_fonte}"
-        
         df = pd.read_sql(sql_query, conn)
+        conn.close()
         return df
-        
-    except pyodbc.Error as ex:
-        st.error(f"Erro ao consultar {nome_da_fonte}. Verifique se a tabela/view existe e se as colunas estão corretas: {ex}")
-        return pd.DataFrame() 
-    finally:
-        if conn:
-            conn.close()
+    except pd.io.sql.DatabaseError as e:
+        # Se o erro original não tivesse o 'vw_vw_', usar_view poderia ser usado aqui
+        # Mas, para resolver o 'vw_vw_', esta lógica é mais segura.
+        st.error(f"Erro ao consultar dados na {tabela_ou_view}: {e}")
+        conn.close()
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Erro inesperado ao conectar ou consultar: {e}")
+        if conn: conn.close()
+        return pd.DataFrame()
 
 
 # --- FUNÇÃO DE INSERÇÃO (MANTIDA) ---
@@ -248,7 +259,7 @@ def reset_categoria():
         st.session_state.sel_sub = None
 
 def formulario_transacao():
-    st.header("Registro de Transação (stg_Transacoes)")
+    st.header("Registro de Transação")
     
     # 1. CARREGAR DADOS DAS DIMENSÕES
     df_tipos = consultar_dados("dim_TipoTransacao", usar_view=False)
@@ -409,10 +420,137 @@ def formulario_transacao():
     st.subheader("Transações em Staging")
     df_stg = consultar_dados("stg_Transacoes", usar_view=False)
     st.dataframe(df_stg, use_container_width=True)
+
+def exibir_detalhe_rateio():
+    st.header("Análise de Acerto de Contas")
+    
+    # ----------------------------------------------------------------------
+    # 1. TABELA RESUMO TOTAL: Quem Deve e o Valor (vw_AcertoTotal) <--- NOVO
+    # ----------------------------------------------------------------------
+    st.subheader("Saldo Total Pendente")
+
+    df_total = consultar_dados("vw_AcertoTotal")
+
+    if df_total.empty:
+        st.info("Nenhuma transação para rateio pendente.")
+        return # Se não houver dados, para a execução aqui
+
+    # Renomeação do Resumo Total
+    df_total.rename(columns={
+        'NomeUsuario': 'Usuário',
+        'VL_SaldoTotal': 'Saldo Total'
+    }, inplace=True)
+    
+    # Função de estilo (reutilizando a lógica de cor)
+    def color_saldo(val):
+        color = 'red' if val < 0 else 'green' if val > 0 else 'black'
+        return f'color: {color}'
+
+    # Exibição do Resumo Total (Usando .style.format para formatar sem o R$)
+    st.dataframe(
+        df_total.style.applymap(
+            color_saldo, 
+            subset=['Saldo Total'] 
+        ).format({
+            # Formatação para xx.xxx,xx
+            'Saldo Total': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        }),
+        use_container_width=True
+    )
+
+    st.markdown("---")
+
+    # ----------------------------------------------------------------------
+    # 2. TABELA CONSOLIDADO MENSAL (vw_AcertoMensal)
+    # ----------------------------------------------------------------------
+    st.subheader("Saldo Consolidado Mensal")
+    df_resumo = consultar_dados("vw_AcertoMensal")
+
+    if df_resumo.empty:
+        st.info("Nenhuma transação para rateio pendente. Cadastre uma transação dividida ou marque as transações antigas como saldadas.")
+        return
+
+    # Renomeação do Resumo
+    df_resumo.rename(columns={
+        'CD_QuemDeve': 'Usuário',
+        'VL_SaldoAcertoMensal': 'Saldo Líquido'
+    }, inplace=True)
+    
+    # Função de estilo para o Resumo (CORRIGIDO A SINTAXE E ESPERA O VALOR NUMÉRICO)
+    def color_saldo_resumo(val):
+        # Garante que val é um número
+        if isinstance(val, str):
+            try:
+                val = float(val.replace('.', '').replace(',', '.'))
+            except ValueError:
+                val = 0
+                
+        color = 'red' if val < 0 else 'green' if val > 0 else 'black'
+        return f'color: {color}'
+
+    # Exibição do Resumo (Usando .style.format para formatar sem o R$)
+    st.dataframe(
+        df_resumo.style.applymap(
+            color_saldo_resumo, 
+            subset=['Saldo Líquido'] # Aplica a cor na coluna numérica
+        ).format({
+            # Formatação para xx.xxx,xx
+            'Saldo Líquido': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        }),
+        column_order=['Ano', 'Mes', 'Usuário', 'Saldo Líquido'],
+        use_container_width=True
+    )
+
+    st.markdown("---") 
+
+    # ----------------------------------------------------------------------
+    # 3. TABELA DETALHE: Detalhe por Transação (vw_AcertoTransacao)
+    # ----------------------------------------------------------------------
+    st.subheader("Detalhe das Transações Pendentes de Acerto")
+    
+    # Usando o nome da View que você indicou: vw_AcertoDetalhe
+    df_detalhe = consultar_dados("vw_AcertoDetalhe") 
+
+    # Renomeação do Detalhe
+    df_detalhe.rename(columns={
+        'DT_DataTransacao': 'Data',
+        'DSC_Transacao': 'Descrição',
+        'VL_TotalTransacao': 'Total da Transação',
+        'CD_QuemPagou': 'Pagador',
+        'CD_QuemDeve': 'Usuário',
+        'VL_Proporcional': 'Devido (Parte Dele)',
+        'VL_AcertoTransacao': 'Acerto Líquido'
+    }, inplace=True)
+    
+    # Função de estilo para o Detalhe
+    def color_acerto_detalhe(val):
+        # A função de cor agora recebe o valor numérico
+        if isinstance(val, str):
+            try:
+                val = float(val.replace('.', '').replace(',', '.'))
+            except ValueError:
+                val = 0
+                
+        color = 'red' if val < 0 else 'green' if val > 0 else 'black'
+        return f'color: {color}'
+
+    # Exibição do Detalhe (Usando .style.format para aplicar formatação e cor)
+    st.dataframe(
+        df_detalhe.style.applymap(
+            color_acerto_detalhe, 
+            subset=['Acerto Líquido']
+        ).format({
+            # Formatação de moeda para todas as colunas de valor
+            'Total da Transação': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            'Devido (Parte Dele)': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            'Acerto Líquido': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        }),
+        use_container_width=True
+    )
 # --- INTERFACE PRINCIPAL COM MENU (ATUALIZADA) ---
 
 if 'menu_selecionado' not in st.session_state:
-    st.session_state.menu_selecionado = "Tipos de Transação" # Opção padrão
+    st.session_state.menu_selecionado = "Registrar Transação"
 
 def main():
     st.title("Finanças Pessoais")
@@ -432,7 +570,18 @@ def main():
     st.sidebar.markdown("---") # Linha separadora para visualização
 
     # ----------------------------------------------------
-    # 2. BOTÕES DE CADASTRO DIMENSIONAL
+    # 2. BOTÕES DE ANÁLISE (NOVO BLOCO)
+    # ----------------------------------------------------
+    st.sidebar.subheader("Análises e Saldos")
+    
+    # NOVO BOTÃO DE ACERTO
+    if st.sidebar.button("📊 Acerto de Contas", key="btn_analise_acerto"):
+        st.session_state.menu_selecionado = "Acerto de Contas"
+        
+    st.sidebar.markdown("---")
+
+    # ----------------------------------------------------
+    # 3. BOTÕES DE CADASTRO DIMENSIONAL
     # ----------------------------------------------------
     
     # Cria o agrupador que se expande e recolhe
@@ -454,13 +603,15 @@ def main():
                 st.session_state.menu_selecionado = nome_opcao
 
     # ----------------------------------------------------
-    # 3. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
+    # 4. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
     # ----------------------------------------------------
     
     # Exibe o formulário com base na opção armazenada no estado da sessão
     opcao_atual = st.session_state.menu_selecionado
     
-    if opcao_atual == "Transação":
+    if opcao_atual == "Acerto de Contas":
+        exibir_detalhe_rateio()
+    elif opcao_atual == "Transação":
         formulario_transacao()
     elif opcao_atual == "Salário":
         formulario_salario()
