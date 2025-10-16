@@ -259,3 +259,16 @@ INNER JOIN vw_Rateio AS R
 WHERE T.CD_EDividido = 'S' AND T.CD_FoiDividido = 'N'
 GROUP BY R.NomeUsuario;
 GO
+
+CREATE OR ALTER VIEW vw_fact_Salarios AS
+SELECT S.ID_Salario,
+    U.DSC_Nome AS NomeUsuario,
+    S.VL_Salario,
+    S.DT_Recebimento,
+    S.DSC_Observacao,
+    YEAR(S.DT_Recebimento) AS Ano,
+    MONTH(S.DT_Recebimento) AS Mes
+FROM fact_Salario AS S
+INNER JOIN dim_Usuario AS U 
+    ON S.ID_Usuario = U.ID_Usuario;
+GO

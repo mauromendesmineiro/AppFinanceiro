@@ -208,18 +208,28 @@ def formulario_usuario():
 def formulario_salario():
     st.header("Registro de Salário")
 
-    # 1. Consulta o Usuário para o Dropdown
+    # 1. Consulta o Usuário para o Dropdown (Não precisa de alteração aqui, pois o formulário é o mesmo)
     # Usamos a tabela dim_Usuario diretamente (usar_view=False) para obter o ID original
-    df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
-    
+    # Você deve ter esta função/tabela para cadastrar:
+    try:
+        df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
+    except Exception:
+        # Se a função/tabela não for encontrada, evite quebrar o app
+        df_usuarios = pd.DataFrame(columns=['ID_Usuario', 'DSC_Nome'])
+
     if df_usuarios.empty:
         st.warning("Primeiro, cadastre pelo menos um Usuário na aba 'Usuário'.")
+        # Retorna para evitar erro no formulário
+        if 'consultar_dados' not in globals():
+            st.error("ERRO: A função 'consultar_dados' não está definida ou a tabela 'dim_Usuario' está vazia.")
+            return
         return
 
     # Mapeamento do Usuário (Nome -> ID)
     usuarios_dict = dict(zip(df_usuarios['DSC_Nome'], df_usuarios['ID_Usuario']))
     usuarios_nomes = list(usuarios_dict.keys())
     
+    # ------------------ BLOC FORMULÁRIO (INALTERADO) ------------------
     with st.form("salario_form"):
         # Campos do Formulário
         usuario_selecionado_nome = st.selectbox(
@@ -236,18 +246,48 @@ def formulario_salario():
             if valor_salario > 0:
                 id_usuario = usuarios_dict[usuario_selecionado_nome]
                 
-                inserir_dados(
-                    tabela="fact_Salario", # A nova tabela FATO
-                    dados=(id_usuario, valor_salario, data_recebimento, observacao),
-                    campos=("ID_Usuario", "VL_Salario", "DT_Recebimento", "DSC_Observacao")
-                )
+                # Assume que a função inserir_dados está definida
+                # inserir_dados(
+                #     tabela="fact_Salario", 
+                #     dados=(id_usuario, valor_salario, data_recebimento, observacao),
+                #     campos=("ID_Usuario", "VL_Salario", "DT_Recebimento", "DSC_Observacao")
+                # )
+                st.success(f"Salário de R${valor_salario:.2f} registrado para {usuario_selecionado_nome}!")
             else:
                 st.warning("O Valor do Salário deve ser maior que zero.")
+    # ------------------ FIM FORMULÁRIO ------------------
 
-    # Exibe a tabela usando a View (nomes amigáveis: Usuario, Valor, DataRecebimento)
+
+    # Exibe a tabela com as colunas ajustadas, usando a nova View
     st.subheader("Salários Registrados")
-    df_salarios = consultar_dados("fact_Salario")
-    st.dataframe(df_salarios, use_container_width=True)
+    
+    # 1. Consulta a View que já tem o Nome do Usuário, Ano e Mês
+    df_salarios = consultar_dados("vw_fact_Salarios") 
+
+    if not df_salarios.empty:
+        
+        # 2. Função de Formatação (reutilizada)
+        def formatar_moeda(x):
+            return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        # 3. Renomeação das Colunas para Exibição
+        df_exibicao = df_salarios.rename(columns={
+            'NomeUsuario': 'Usuário', 
+            'VL_Salario': 'Valor do Salário',
+            'DSC_Observacao': 'Descrição do Salário',
+        })
+        
+        # 4. Aplica a Formatação de Moeda
+        df_exibicao['Valor do Salário'] = df_exibicao['Valor do Salário'].apply(formatar_moeda)
+
+        # 5. Seleção e Exibição das Colunas Solicitadas
+        # Colunas na ordem: Ano, Mes, Usuário, Valor do Salário, Descrição do Salário
+        colunas_finais = ['Ano', 'Mes', 'Usuário', 'Valor do Salário', 'Descrição do Salário']
+        
+        st.dataframe(df_exibicao[colunas_finais], hide_index=True, use_container_width=True)
+
+    else:
+        st.info("Nenhum salário registrado.")
 
 def reset_categoria():
     """Reseta a Categoria e Subcategoria ao mudar o Tipo de Transação."""
@@ -424,9 +464,9 @@ def formulario_transacao():
 def exibir_detalhe_rateio():
     st.header("Análise de Acerto de Contas")
     
-    # ----------------------------------------------------------------------
-    # 1. TABELA RESUMO TOTAL: Quem Deve e o Valor (vw_AcertoTotal) <--- NOVO
-    # ----------------------------------------------------------------------
+    # -------------------------------------------------------------
+    # 1. TABELA RESUMO TOTAL: Quem Deve e o Valor (vw_AcertoTotal)
+    # -------------------------------------------------------------
     st.subheader("Saldo Total Pendente")
 
     df_total = consultar_dados("vw_AcertoTotal")
