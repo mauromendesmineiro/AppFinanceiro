@@ -1,0 +1,18 @@
+# Pasta do Ambiente Virtual (a principal causa do grande volume)
+venv/
+
+# Arquivos compilados do Python
+*.pyc
+__pycache__/
+
+# Arquivos de banco de dados e chaves (para não subir senhas/dados sensíveis)
+*.db
+*.key
+*.enc
+*.txt
+
+# Arquivos de Sistema
+.DS_Store
+
+# Arquivos de log e cache do Streamlit
+.streamlit/
