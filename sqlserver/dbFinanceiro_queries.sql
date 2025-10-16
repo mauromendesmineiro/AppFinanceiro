@@ -21,26 +21,53 @@ GO
 --         CD_FoiDividido CHAR(1) NOT NULL -- 'S' para Sim, 'n' para Não
 --     );
 
--- DROP TABLE IF EXISTS dim_TipoTransacao
---     CREATE TABLE dim_TipoTransacao (
---         ID_Tipo INT PRIMARY KEY IDENTITY(1,1),
---         DSC_TipoTransacao VARCHAR(12) NOT NULL UNIQUE
---     );
+DROP TABLE IF EXISTS dim_TipoTransacao
+    CREATE TABLE dim_TipoTransacao (
+        ID_Tipo INT PRIMARY KEY IDENTITY(1,1),
+        DSC_TipoTransacao VARCHAR(50) NOT NULL UNIQUE
+    );
 
--- DROP TABLE IF EXISTS dim_Categoria
---     CREATE TABLE dim_Categoria (
---         ID_Categoria INT PRIMARY KEY IDENTITY(1,1),
---         DSC_CategoriaTransacao VARCHAR(50) NOT NULL UNIQUE
---     );
+DROP TABLE IF EXISTS dim_Categoria
+    CREATE TABLE dim_Categoria (
+        ID_Categoria INT PRIMARY KEY IDENTITY(1,1),
+        DSC_CategoriaTransacao VARCHAR(50) NOT NULL UNIQUE
+    );
 
--- DROP TABLE IF EXISTS dim_Subcategoria
---     CREATE TABLE dim_Subcategoria (
---         ID_Subcategoria INT PRIMARY KEY IDENTITY(1,1),
---         ID_Categoria INT NOT NULL,
---         DSC_SubcategoriaTransacao VARCHAR(50) NOT NULL,
---         FOREIGN KEY (ID_Categoria) REFERENCES Dim_Categoria(ID_Categoria)
---     );
+DROP TABLE IF EXISTS dim_Subcategoria
+    CREATE TABLE dim_Subcategoria (
+        ID_Subcategoria INT PRIMARY KEY IDENTITY(1,1),
+        ID_Categoria INT NOT NULL,
+        DSC_SubcategoriaTransacao VARCHAR(50) NOT NULL,
+        FOREIGN KEY (ID_Categoria) REFERENCES dim_Categoria(ID_Categoria)
+    );
 
-SELECT * FROM dim_Categoria
+-- Para dim_TipoTransacao
+--DROP VIEW IF EXISTS vw_dim_TipoTransacao;
+CREATE VIEW vw_dim_TipoTransacao AS
+    SELECT ID_Tipo AS ID
+        ,DSC_TipoTransacao AS "Tipo de Transação"
+    FROM dim_TipoTransacao;
+GO
+
+-- Para dim_Categoria
+--DROP VIEW IF EXISTS vw_dim_Categoria;
+CREATE VIEW vw_dim_Categoria AS
+    SELECT ID_Categoria AS ID
+        ,DSC_CategoriaTransacao AS Categoria
+    FROM dim_Categoria;
+GO
+
+-- Para dim_Subcategoria (Aqui você faria um JOIN para mostrar o nome da Categoria Pai!)
+--DROP VIEW IF EXISTS vw_dim_Subcategoria;
+CREATE VIEW vw_dim_Subcategoria AS
+    SELECT s.ID_Subcategoria AS ID
+        ,c.DSC_CategoriaTransacao AS Categoria
+        ,s.DSC_SubcategoriaTransacao AS Subcategoria
+    FROM dim_Subcategoria s
+    INNER JOIN dim_Categoria c ON s.ID_Categoria = c.ID_Categoria;
+GO
+
+SELECT * FROM dim_Categoria;
+SELECT * FROM dim_Subcategoria
 
 GO
