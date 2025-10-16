@@ -9,20 +9,27 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# --- CONFIGURAÇÃO DA CONEXÃO (MANTENHA SEU AJUSTE AQUI!) ---
-# Lembre-se: Se você instalou o SQLEXPRESS, ajuste o SERVER para o nome correto,
-# ex: f'DRIVER={DRIVER};SERVER=NOME_DO_SEU_COMPUTADOR\SQLEXPRESS;...'
-SERVER = '(localdb)\\MSSQLLocalDB' 
-DATABASE = 'financeiro'
-DRIVER = '{ODBC Driver 17 for SQL Server}' 
-CONNECTION_STRING = f'DRIVER={DRIVER};SERVER={SERVER};DATABASE={DATABASE};Trusted_Connection=yes;'
-
+@st.cache_resource
 def get_connection():
-    # Esta função agora usa a CONNECTION_STRING definida acima
-    conn = pyodbc.connect(CONNECTION_STRING)
+    # As credenciais são carregadas do arquivo secrets.toml (Streamlit Cloud)
+    # OBS: O nome da chave 'sqlserver' deve bater com a chave que você usará no secrets.toml
+    conn_details = st.secrets["sqlserver"] 
+    
+    # A string de conexão agora usa as credenciais de usuário/senha para acesso remoto
+    # O DRIVER {ODBC Driver 17 for SQL Server} precisa ser instalado no ambiente Cloud,
+    # o que requer um passo a mais (mas vamos assumir que você está migrando para um 
+    # banco de dados em nuvem que exige UID/PWD).
+    CONNECTION_STRING_CLOUD = (
+        f'DRIVER={conn_details["driver"]};'
+        f'SERVER={conn_details["server"]};'
+        f'DATABASE={conn_details["database"]};'
+        f'UID={conn_details["username"]};'
+        f'PWD={conn_details["password"]};'
+    )
+    
+    conn = pyodbc.connect(CONNECTION_STRING_CLOUD)
     return conn
 
-@st.cache_data(ttl=600)
 def consultar_dados(tabela_ou_view, usar_view=False):
     conn = get_connection()
     
