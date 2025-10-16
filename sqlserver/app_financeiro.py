@@ -1,6 +1,7 @@
 import streamlit as st
 import pyodbc
 import pandas as pd
+import datetime
 
 # --- CONFIGURAÇÃO DA CONEXÃO (MANTENHA SEU AJUSTE AQUI!) ---
 # Lembre-se: Se você instalou o SQLEXPRESS, ajuste o SERVER para o nome correto,
@@ -193,7 +194,221 @@ def formulario_usuario():
     df_usuarios = consultar_dados("dim_Usuario")
     st.dataframe(df_usuarios, use_container_width=True)
 
+def formulario_salario():
+    st.header("Registro de Salário")
 
+    # 1. Consulta o Usuário para o Dropdown
+    # Usamos a tabela dim_Usuario diretamente (usar_view=False) para obter o ID original
+    df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
+    
+    if df_usuarios.empty:
+        st.warning("Primeiro, cadastre pelo menos um Usuário na aba 'Usuário'.")
+        return
+
+    # Mapeamento do Usuário (Nome -> ID)
+    usuarios_dict = dict(zip(df_usuarios['DSC_Nome'], df_usuarios['ID_Usuario']))
+    usuarios_nomes = list(usuarios_dict.keys())
+    
+    with st.form("salario_form"):
+        # Campos do Formulário
+        usuario_selecionado_nome = st.selectbox(
+            "Selecione o Usuário:",
+            usuarios_nomes
+        )
+        valor_salario = st.number_input("Valor Recebido (Ex: 3500.00)", min_value=0.01, format="%.2f")
+        data_recebimento = st.date_input("Data de Recebimento:", datetime.date.today())
+        observacao = st.text_area("Observação (Ex: Salário mês X):", max_chars=255)
+        
+        submitted = st.form_submit_button("Registrar Salário")
+        
+        if submitted:
+            if valor_salario > 0:
+                id_usuario = usuarios_dict[usuario_selecionado_nome]
+                
+                inserir_dados(
+                    tabela="fact_Salario", # A nova tabela FATO
+                    dados=(id_usuario, valor_salario, data_recebimento, observacao),
+                    campos=("ID_Usuario", "VL_Salario", "DT_Recebimento", "DSC_Observacao")
+                )
+            else:
+                st.warning("O Valor do Salário deve ser maior que zero.")
+
+    # Exibe a tabela usando a View (nomes amigáveis: Usuario, Valor, DataRecebimento)
+    st.subheader("Salários Registrados")
+    df_salarios = consultar_dados("fact_Salario")
+    st.dataframe(df_salarios, use_container_width=True)
+
+def reset_categoria():
+    """Reseta a Categoria e Subcategoria ao mudar o Tipo de Transação."""
+    # Define a chave de Categoria para o primeiro valor (index=0)
+    # A Subcategoria é implicitamente reajustada no próximo re-run.
+    if 'sel_cat' in st.session_state:
+        st.session_state.sel_cat = None
+    if 'sel_sub' in st.session_state:
+        st.session_state.sel_sub = None
+
+def formulario_transacao():
+    st.header("Registro de Transação (stg_Transacoes)")
+    
+    # 1. CARREGAR DADOS DAS DIMENSÕES
+    df_tipos = consultar_dados("dim_TipoTransacao", usar_view=False)
+    df_categorias = consultar_dados("dim_Categoria", usar_view=False)
+    df_subcategorias = consultar_dados("dim_Subcategoria", usar_view=False)
+    df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
+
+    if df_tipos.empty or df_categorias.empty or df_subcategorias.empty or df_usuarios.empty:
+        st.warning("É necessário cadastrar: Tipos, Categorias, Subcategorias e Usuários.")
+        return
+
+    tipos_map = dict(zip(df_tipos['DSC_TipoTransacao'], df_tipos['ID_TipoTransacao']))
+    usuarios_map = dict(zip(df_usuarios['DSC_Nome'], df_usuarios['ID_Usuario']))
+    
+    tipos_nomes = list(tipos_map.keys())
+    usuarios_nomes = list(usuarios_map.keys())
+    
+    # ----------------------------------------------------------------------------------
+    # REMOÇÃO DO BLOCO with st.form(...)
+    # ----------------------------------------------------------------------------------
+    
+    # ----------------------------------------
+    # LINHA 1: DATA, TIPO E USUÁRIO
+    # ----------------------------------------
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        data_transacao = st.date_input("Data da Transação:", datetime.date.today())
+    with col2:
+        # st.selectbox: Tipo de Transação - COM CALLBACK (Funciona fora do st.form)
+        tipo_nome = st.selectbox(
+            "Tipo de Transação:", 
+            tipos_nomes, 
+            key="sel_tipo", 
+            on_change=reset_categoria # <--- AGORA VAI FUNCIONAR!
+        )
+    with col3:
+        usuario_nome = st.selectbox("Usuário (Quem Registrou):", usuarios_nomes, key="sel_usuario")
+    
+    # ----------------------------------------
+    # LINHA 2: CATEGORIA (Filtro pelo Tipo)
+    # ----------------------------------------
+    
+    id_tipo_selecionado = tipos_map.get(tipo_nome)
+    df_cats_filtradas = df_categorias[df_categorias['ID_TipoTransacao'] == id_tipo_selecionado].copy()
+    
+    if df_cats_filtradas.empty:
+         st.warning(f"Não há Categorias cadastradas para o Tipo '{tipo_nome}'. Cadastre uma Categoria.")
+         categorias_nomes = ["(Cadastre uma Categoria)"]
+    else:
+         categorias_nomes = df_cats_filtradas['DSC_CategoriaTransacao'].tolist()
+
+    col4, col5 = st.columns(2)
+    with col4:
+        # st.selectbox: Categoria - O 'index=0' garante que ele pegará o primeiro item após o reset.
+        categoria_nome = st.selectbox(
+            "Categoria:", 
+            categorias_nomes, 
+            key="sel_cat",
+            index=0
+        )
+    
+    # ----------------------------------------
+    # LINHA 2 CONTINUA: SUBCATEGORIA (Filtro pela Categoria)
+    # ----------------------------------------
+    
+    if categoria_nome == "(Cadastre uma Categoria)":
+         df_subs_filtradas = pd.DataFrame() 
+         subcategorias_nomes = ["(Cadastre uma Subcategoria)"]
+    else:
+        # Verifica se a categoria selecionada existe no DataFrame filtrado, evitando erros.
+        if categoria_nome in df_cats_filtradas['DSC_CategoriaTransacao'].values:
+            id_categoria_selecionada = df_cats_filtradas[df_cats_filtradas['DSC_CategoriaTransacao'] == categoria_nome]['ID_Categoria'].iloc[0]
+            
+            df_subs_filtradas = df_subcategorias[df_subcategorias['ID_Categoria'] == id_categoria_selecionada].copy()
+            
+            if df_subs_filtradas.empty:
+                 st.warning(f"Não há Subcategorias cadastradas para a Categoria '{categoria_nome}'. Cadastre uma Subcategoria.")
+                 subcategorias_nomes = ["(Cadastre uma Subcategoria)"]
+            else:
+                 subcategorias_nomes = df_subs_filtradas['DSC_SubcategoriaTransacao'].tolist()
+        else:
+            # Caso a categoria selecionada seja inválida após a troca de Tipo, usa placeholder.
+            df_subs_filtradas = pd.DataFrame()
+            subcategorias_nomes = ["(Selecione uma Categoria válida)"]
+
+
+    with col5:
+        subcategoria_nome = st.selectbox("Subcategoria:", subcategorias_nomes, key="sel_sub", index=0)
+    
+    # ----------------------------------------
+    # LINHA 3 & 4: VALOR, DESCRIÇÃO, CONTROLE
+    # ----------------------------------------
+    
+    valor_transacao = st.number_input("Valor da Transação:", min_value=0.01, format="%.2f")
+    descricao = st.text_area("Descrição Detalhada:", max_chars=100)
+    
+    st.subheader("Controle de Pagamento")
+    col6, col7, col8 = st.columns(3)
+    
+    with col6:
+        quem_pagou = st.selectbox("Quem Pagou:", usuarios_nomes, key="sel_quem_pagou")
+    with col7:
+        # Ajuste de Label e Opções para "Será Dividida?"
+        e_dividido = st.radio(
+            "Essa transação será dividida?", 
+            ('Não', 'Sim'), 
+            horizontal=True, 
+            index=0 # Padrão: Não
+        )
+    with col8:
+        # NOVO NOME e Ajuste de Opções para "Saldada/Acertada?"
+        foi_dividido = st.radio( # O nome da variável Python continua 'foi_dividido' por simplicidade
+            "A transação foi acertada/saldada?", 
+            ('Não', 'Sim'), 
+            horizontal=True, 
+            index=0 # Padrão: Não
+        )
+
+    # ----------------------------------------
+    # SUBMIT (st.button em vez de st.form_submit_button)
+    # ----------------------------------------
+    
+    # AGORA USAMOS st.button
+    submitted = st.button("Registrar Transação")
+    
+    if submitted:
+        # Lógica de validação e inserção (mantida)
+        is_valid_category = categoria_nome != "(Cadastre uma Categoria)"
+        is_valid_subcategory = subcategoria_nome != "(Cadastre uma Subcategoria)"
+        
+        # Mapeamento das opções de rádio de volta para N/S para o banco de dados
+        # O banco de dados (stg_Transacoes) espera 'S' ou 'N'
+        cd_e_dividido_bd = 'S' if e_dividido == 'Sim' else 'N'
+        cd_foi_dividido_bd = 'S' if foi_dividido == 'Sim' else 'N'
+
+        if valor_transacao > 0 and descricao and quem_pagou and is_valid_category and is_valid_subcategory:
+            
+            # Mapeamento de IDs
+            id_usuario = int(usuarios_map[usuario_nome])
+            id_tipo = int(tipos_map[tipo_nome])
+            
+            # Usamos .iloc[0] para obter o ID
+            id_categoria_final = int(df_cats_filtradas[df_cats_filtradas['DSC_CategoriaTransacao'] == categoria_nome]['ID_Categoria'].iloc[0])
+            id_subcategoria_final = int(df_subs_filtradas[df_subs_filtradas['DSC_SubcategoriaTransacao'] == subcategoria_nome]['ID_Subcategoria'].iloc[0])
+            
+            dados = (data_transacao, id_tipo, tipo_nome, id_categoria_final, categoria_nome, 
+                     id_subcategoria_final, subcategoria_nome, id_usuario, usuario_nome, 
+                     descricao, valor_transacao, quem_pagou, cd_e_dividido_bd, cd_foi_dividido_bd)
+            
+            campos = ("DT_DataTransacao", "ID_TipoTransacao", "DSC_TipoTransacao", "ID_Categoria", "DSC_CategoriaTransacao", 
+                      "ID_Subcategoria", "DSC_SubcategoriaTransacao", "ID_Usuario", "DSC_NomeUsuario",
+                      "DSC_Transacao", "VL_Transacao", "CD_QuemPagou", "CD_EDividido", "CD_FoiDividido") # MANTÉM NOME DA COLUNA SQL
+            
+            inserir_dados(tabela="stg_Transacoes", dados=dados, campos=campos)
+        else:
+            st.warning("Verifique se o Valor, Descrição e Categorias/Subcategorias válidas foram selecionadas.")
+
+    st.subheader("Transações em Staging")
+    df_stg = consultar_dados("stg_Transacoes", usar_view=False)
+    st.dataframe(df_stg, use_container_width=True)
 # --- INTERFACE PRINCIPAL COM MENU (ATUALIZADA) ---
 
 if 'menu_selecionado' not in st.session_state:
@@ -204,7 +419,20 @@ def main():
     st.sidebar.title("Menu")
     
     # ----------------------------------------------------
-    # 1. BOTÕES DE NAVEGAÇÃO NA BARRA LATERAL
+    # 1. BOTÃO DE REGISTRO DE FATO (NO TOPO)
+    # ----------------------------------------------------
+    
+    st.sidebar.subheader("Transações")
+    
+    if st.sidebar.button("📝 Registrar Transação", key="btn_fact_transacao"):
+        st.session_state.menu_selecionado = "Transação"
+    if st.sidebar.button("💰 Registrar Salário", key="btn_fact_salario"):
+        st.session_state.menu_selecionado = "Salário"
+
+    st.sidebar.markdown("---") # Linha separadora para visualização
+
+    # ----------------------------------------------------
+    # 2. BOTÕES DE CADASTRO DIMENSIONAL
     # ----------------------------------------------------
     
     # Cria o agrupador que se expande e recolhe
@@ -226,13 +454,17 @@ def main():
                 st.session_state.menu_selecionado = nome_opcao
 
     # ----------------------------------------------------
-    # 2. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
+    # 3. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
     # ----------------------------------------------------
     
     # Exibe o formulário com base na opção armazenada no estado da sessão
     opcao_atual = st.session_state.menu_selecionado
     
-    if opcao_atual == "Tipos de Transação":
+    if opcao_atual == "Transação":
+        formulario_transacao()
+    elif opcao_atual == "Salário":
+        formulario_salario()
+    elif opcao_atual == "Tipos de Transação":
         formulario_tipo_transacao()
     elif opcao_atual == "Categorias":
         formulario_categoria()
@@ -240,7 +472,6 @@ def main():
         formulario_subcategoria()
     elif opcao_atual == "Usuários":
         formulario_usuario()
-
 
 if __name__ == '__main__':
     main()

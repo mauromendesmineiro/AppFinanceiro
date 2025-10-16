@@ -16,3 +16,6 @@ __pycache__/
 
 # Arquivos de log e cache do Streamlit
 .streamlit/
+
+# Pasta excluída do rastreamento Git, mas mantida localmente
+password_manager/

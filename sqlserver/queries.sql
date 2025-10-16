@@ -88,6 +88,29 @@ CREATE TABLE stg_Transacoes (
         REFERENCES dim_Usuario (ID_Usuario)
 );
 
+CREATE TABLE fact_Salario (
+    ID_Salario INT PRIMARY KEY IDENTITY(1,1), -- Chave Primária, Identidade (Auto-Incremento)
+    
+    -- Chaves Estrangeiras (Vínculos com as Dimensões)
+    ID_Usuario INT NOT NULL,                  -- Quem recebeu o salário
+    
+    -- Fato e Medidas (Valores)
+    VL_Salario DECIMAL(10, 2) NOT NULL,       -- Valor líquido do salário
+    
+    -- Tempo e Descrição
+    DT_Recebimento DATE NOT NULL,             -- Data efetiva do recebimento do salário
+    DSC_Observacao VARCHAR(255) NULL,         -- Observações, ex: "Salário Janeiro/2025"
+    
+    -- Data de Criação do Registro
+    DT_CriacaoRegistro DATETIME DEFAULT GETDATE(), -- Data/Hora de quando o registro foi inserido no sistema
+    
+    -- CHAVE ESTRANGEIRA
+    CONSTRAINT FK_Salario_Usuario
+        FOREIGN KEY (ID_Usuario)
+        REFERENCES dim_Usuario (ID_Usuario)
+);
+GO
+
 CREATE OR ALTER VIEW vw_dim_TipoTransacao AS
 SELECT ID_TipoTransacao AS ID,                     -- Chave Primária simplificada
     DSC_TipoTransacao AS 'Tipo de Transacao',         -- Nome amigável para exibição
@@ -119,4 +142,47 @@ CREATE OR ALTER VIEW vw_dim_Usuario AS
 SELECT ID_Usuario AS ID,                       -- Chave Primária simplificada
     DSC_Nome AS Nome                        -- Nome amigável para exibição
 FROM dim_Usuario;
+GO
+
+CREATE OR ALTER VIEW vw_fact_Salario AS
+SELECT
+    S.ID_Salario AS ID,                         -- Chave Primária simplificada
+    U.DSC_Nome AS Usuario,                      -- Exibe o nome do Usuário (JOIN)
+    S.VL_Salario AS Valor,                      -- Valor do Salário
+    S.DT_Recebimento AS 'Data do Recebimento',        -- Data de recebimento
+    S.DSC_Observacao AS Observacao,             -- Observações
+    S.DT_CriacaoRegistro AS 'Data do Registro'        -- Data de criação do registro
+FROM fact_Salario AS S
+INNER JOIN dim_Usuario AS U
+    ON S.ID_Usuario = U.ID_Usuario;             -- Junta com o Usuário para mostrar o nome
+GO
+
+CREATE OR ALTER VIEW vw_Rateio AS
+SELECT
+    -- Agrupadores de Tempo
+    YEAR(S.DT_Recebimento) AS Ano,                  -- Ano do recebimento (Contexto de rateio)
+    MONTH(S.DT_Recebimento) AS Mes,                 -- Mês do recebimento (Contexto de rateio)
+    
+    -- Informações do Usuário
+    S.ID_Usuario,                                   -- Chave do Usuário
+    U.DSC_Nome AS NomeUsuario,                      -- Nome do Usuário
+    
+    -- Valores de Salário (apenas para contexto)
+    S.VL_Salario,                                   -- Salário individual do registro
+  
+    -- Soma Total dos Salários no Mes/Ano
+    SUM(S.VL_Salario) OVER (
+        PARTITION BY YEAR(S.DT_Recebimento), MONTH(S.DT_Recebimento)
+    ) AS VL_TotalSalarioMes,
+    
+    -- Proporção de Rateio como PERCENTUAL (arredondado para 2 casas decimais)
+    ROUND(
+        (CAST(S.VL_Salario AS DECIMAL(18, 4)) / SUM(S.VL_Salario) OVER (
+            PARTITION BY YEAR(S.DT_Recebimento), MONTH(S.DT_Recebimento)
+        )), 4
+    ) AS VL_Rateio
+    
+FROM fact_Salario AS S
+INNER JOIN dim_Usuario AS U
+    ON S.ID_Usuario = U.ID_Usuario;
 GO
