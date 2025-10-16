@@ -70,107 +70,440 @@ def inserir_dados(tabela, dados, campos):
             conn.close()
 
 def formulario_tipo_transacao():
-    st.header("Cadastro de Tipo de Transação")
+    st.header("Cadastro e Manutenção de Tipo de Transação")
+    
+    # ----------------------------------------------------
+    # A) CADASTRO (MANTIDO)
+    # ----------------------------------------------------
+    st.subheader("1. Inserir Novo Tipo")
     
     with st.form("tipo_form"):
         # Campo de entrada
         descricao = st.text_input("Descrição do Tipo (ex: Receita, Despesa)")
         
-        submitted = st.form_submit_button("Inserir Tipo")
+        submitted = st.form_submit_button("Inserir Novo Tipo")
         
         if submitted:
             if descricao:
+                # Assume que a função inserir_dados está definida
                 inserir_dados(
                     tabela="dim_TipoTransacao",
                     dados=(descricao,),
-                    campos=("DSC_TipoTransacao",) # Coluna original, pois é para INSERT
+                    campos=("DSC_TipoTransacao",)
                 )
             else:
                 st.warning("O campo Descrição é obrigatório.")
 
-    # Exibe a tabela usando a View (nomes amigáveis: ID, TipoTransacao)
-    st.subheader("Registros Existentes")
-    df_tipos = consultar_dados("dim_TipoTransacao")
-    st.dataframe(df_tipos, use_container_width=True)
-
-def formulario_categoria():
-    st.header("Cadastro de Categoria")
+    # ----------------------------------------------------
+    # B) VISUALIZAÇÃO E SELEÇÃO MANUAL (CORREÇÃO DA LÓGICA)
+    # ----------------------------------------------------
+    st.markdown("---")
+    st.subheader("2. Editar ou Excluir Registros Existentes")
     
-    # Consulta o TIPO de Transação (Receita/Despesa) para o Dropdown
-    # Usamos a tabela diretamente para garantir as colunas originais (ID_TipoTransacao) para o INSERT
-    df_tipos = consultar_dados("dim_TipoTransacao", usar_view=False) 
+    df_tipos = consultar_dados("dim_TipoTransacao")
     
     if df_tipos.empty:
-        st.warning("Primeiro, cadastre um Tipo de Transação ('Receita' ou 'Despesa').")
+        st.info("Nenhum tipo de transação registrado.")
         return
 
-    # Mapeamento do Tipo de Transação (Nome -> ID)
-    # A coluna do tipo (original) é DSC_TipoTransacao
+    # Renomeação para exibição e seleção
+    df_exibicao = df_tipos.rename(columns={'ID_TipoTransacao': 'ID', 'DSC_TipoTransacao': 'Descrição'})[['ID', 'Descrição']]
+    
+    # Exibe a tabela completa para referência
+    st.dataframe(df_exibicao, hide_index=True, use_container_width=True)
+    
+    # --- SELEÇÃO MANUAL DO ID ---
+    lista_ids = [''] + df_exibicao['ID'].astype(str).tolist()
+    id_selecionado_str = st.selectbox(
+        "Selecione o ID do Tipo para Editar/Excluir:", 
+        options=lista_ids, 
+        key="tipo_id_selector" 
+    )
+    
+    id_selecionado = None
+    descricao_atual = None
+    
+    if id_selecionado_str and id_selecionado_str != '':
+        try:
+            id_selecionado = int(id_selecionado_str)
+            
+            # Busca os dados do ID selecionado no DataFrame de exibição
+            dados_selecionados = df_exibicao[df_exibicao['ID'] == id_selecionado].iloc[0]
+            descricao_atual = dados_selecionados['Descrição']
+            
+            st.markdown(f"#### Manutenção do Tipo: ID {id_selecionado} - {descricao_atual}")
+            
+            # --- BLOC DA EDIÇÃO ---
+            with st.form("edicao_tipo_form"):
+                novo_descricao = st.text_input("Nova Descrição:", value=descricao_atual)
+                
+                # Botões de Ação
+                col_edit, col_delete = st.columns([1, 1])
+                
+                with col_edit:
+                    edit_submitted = st.form_submit_button("Salvar Edição", type="secondary")
+                with col_delete:
+                     delete_clicked = st.form_submit_button("🔴 Excluir Registro", type="primary")
+
+                if edit_submitted:
+                    if novo_descricao and novo_descricao != descricao_atual:
+                        # Assumindo que atualizar_registro_dimensao está definida
+                        campos_valores = {"DSC_TipoTransacao": novo_descricao}
+                        if atualizar_registro_dimensao("dim_TipoTransacao", "ID_TipoTransacao", id_selecionado, campos_valores):
+                            st.success(f"Tipo ID {id_selecionado} atualizado para '{novo_descricao}'.")
+                            st.rerun()
+                    elif novo_descricao == descricao_atual:
+                        st.info("Nenhuma alteração detectada para salvar.")
+                    else:
+                        st.warning("A descrição não pode ser vazia.")
+                
+                if delete_clicked:
+                    # Armazena o ID no estado da sessão para a confirmação fora do formulário
+                    # Usando chaves específicas para esta dimensão (tipo)
+                    st.session_state.confirm_delete_id_tipo = id_selecionado
+                    st.session_state.confirm_delete_nome_tipo = descricao_atual
+                    st.rerun() 
+            # --- FIM BLOC DA EDIÇÃO ---
+
+        except Exception as e:
+            st.error(f"Erro ao carregar dados do ID: {e}")
+            
+    
+    # --- LÓGICA DE CONFIRMAÇÃO DE EXCLUSÃO ---
+    if st.session_state.get('confirm_delete_id_tipo'):
+        id_del = st.session_state.confirm_delete_id_tipo
+        nome_del = st.session_state.confirm_delete_nome_tipo
+        
+        st.markdown("---")
+        st.error(f"⚠️ CONFIRMAÇÃO DE EXCLUSÃO: Tem certeza que deseja EXCLUIR o tipo '{nome_del}' (ID {id_del})? Esta ação é irreversível e pode causar erros de integridade em Transações.")
+        
+        col_conf_sim, col_conf_nao = st.columns(2)
+        
+        with col_conf_sim:
+            if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_tipo_sim"):
+                # Assumindo que deletar_registro_dimensao está definida
+                if deletar_registro_dimensao("dim_TipoTransacao", "ID_TipoTransacao", id_del):
+                    st.success(f"Tipo ID {id_del} excluído com sucesso.")
+                    st.session_state.confirm_delete_id_tipo = None
+                    st.rerun()
+        with col_conf_nao:
+            if st.button("CANCELAR Exclusão", key="final_delete_tipo_nao"):
+                st.session_state.confirm_delete_id_tipo = None
+                st.rerun()
+
+def formulario_categoria():
+    st.header("Cadastro e Manutenção de Categorias")
+
+    # 1. Busca os dados de Tipo de Transação para os dropdowns (dim_TipoTransacao)
+    df_tipos = consultar_dados("dim_TipoTransacao")
+    
+    if df_tipos.empty:
+        st.warning("É necessário cadastrar pelo menos um Tipo de Transação (Receita/Despesa) antes de cadastrar Categorias.")
+        return
+        
+    # Mapeamento do Tipo (Nome -> ID)
     tipos_dict = dict(zip(df_tipos['DSC_TipoTransacao'], df_tipos['ID_TipoTransacao']))
     tipos_nomes = list(tipos_dict.keys())
+
+    # ----------------------------------------------------
+    # A) CADASTRO 
+    # ----------------------------------------------------
+    st.subheader("1. Inserir Nova Categoria")
     
     with st.form("categoria_form"):
-        tipo_selecionado_nome = st.selectbox(
-            "Selecione o Tipo (Receita/Despesa):",
+        # Campo de entrada
+        tipo_selecionado = st.selectbox(
+            "Selecione o Tipo de Transação Pai:",
             tipos_nomes
         )
-        descricao = st.text_input("Descrição da Categoria (ex: Alimentação, Investimento)")
+        descricao = st.text_input("Descrição da Categoria (ex: Alimentação, Residência)")
         
-        submitted = st.form_submit_button("Inserir Categoria")
+        submitted = st.form_submit_button("Inserir Nova Categoria")
         
-        if submitted and descricao:
-            id_tipo = tipos_dict[tipo_selecionado_nome]
-            inserir_dados(
-                tabela="dim_Categoria",
-                dados=(id_tipo, descricao,),
-                campos=("ID_TipoTransacao", "DSC_CategoriaTransacao",)
-            )
+        if submitted:
+            if descricao:
+                id_tipo = tipos_dict[tipo_selecionado]
+                
+                # Inserção na tabela dim_Categoria
+                inserir_dados(
+                    tabela="dim_Categoria",
+                    dados=(id_tipo, descricao,),
+                    campos=("ID_TipoTransacao", "DSC_CategoriaTransacao") 
+                )
+            else:
+                st.warning("A Descrição e o Tipo de Transação são obrigatórios.")
 
-    # Exibe a tabela usando a View (nomes amigáveis: TipoTransacao, Categoria)
-    st.subheader("Registros Existentes")
-    df_categorias = consultar_dados("dim_Categoria")
-    st.dataframe(df_categorias, use_container_width=True)
-
-def formulario_subcategoria():
-    st.header("Cadastro de Subcategoria")
-
-    # Consulta a Categoria Pai para o Dropdown
-    # Usamos a tabela diretamente para garantir as colunas originais (ID_Categoria) para o INSERT
-    df_categorias = consultar_dados("dim_Categoria", usar_view=False)
+    # ----------------------------------------------------
+    # B) VISUALIZAÇÃO E SELEÇÃO MANUAL (EDIÇÃO/EXCLUSÃO)
+    # ----------------------------------------------------
+    st.markdown("---")
+    st.subheader("2. Editar ou Excluir Registros Existentes")
+    
+    # USANDO A VIEW INFORMADA PELO USUÁRIO (vw_dim_Categoria)
+    df_categorias = consultar_dados("vw_dim_Categoria") 
     
     if df_categorias.empty:
-        st.warning("Primeiro, cadastre pelo menos uma Categoria.")
+        st.info("Nenhuma categoria registrada.")
         return
 
-    # Mapeamento da Categoria (Nome -> ID). A coluna original é DSC_CategoriaTransacao
+    # Mapeamento baseado nos aliases da VIEW
+    df_exibicao = df_categorias.rename(columns={
+        'ID': 'ID',                                # Coluna da View
+        'Categoria': 'Descrição',                  # Coluna da View
+        'Tipo de Transacao': 'Tipo Pai'            # Coluna da View
+    })[['ID', 'Descrição', 'Tipo Pai']] # <-- CORREÇÃO: REMOÇÃO DA COLUNA 'DataCriacao'
+    
+    # Exibe a tabela completa para referência
+    st.dataframe(df_exibicao, hide_index=True, use_container_width=True)
+    
+    # --- SELEÇÃO MANUAL DO ID ---
+    lista_ids = [''] + df_exibicao['ID'].astype(str).tolist()
+    id_selecionado_str = st.selectbox(
+        "Selecione o ID da Categoria para Editar/Excluir:", 
+        options=lista_ids, 
+        key="categoria_id_selector" 
+    )
+    
+    id_selecionado = None
+    
+    if id_selecionado_str and id_selecionado_str != '':
+        try:
+            id_selecionado = int(id_selecionado_str)
+            
+            # Busca os dados do ID selecionado
+            dados_selecionados = df_exibicao[df_exibicao['ID'] == id_selecionado].iloc[0]
+            descricao_atual = dados_selecionados['Descrição']
+            tipo_pai_atual = dados_selecionados['Tipo Pai']
+            
+            st.markdown(f"#### Manutenção da Categoria: ID {id_selecionado} - {descricao_atual}")
+            
+            # --- BLOC DA EDIÇÃO ---
+            with st.form("edicao_categoria_form"):
+                
+                # Permite mudar o Tipo Pai
+                novo_tipo_pai = st.selectbox(
+                    "Mudar Tipo de Transação Pai:", 
+                    tipos_nomes,
+                    index=tipos_nomes.index(tipo_pai_atual)
+                )
+                novo_descricao = st.text_input("Nova Descrição:", value=descricao_atual)
+                
+                # Botões de Ação
+                col_edit, col_delete = st.columns([1, 1])
+                
+                with col_edit:
+                    edit_submitted = st.form_submit_button("Salvar Edição", type="secondary")
+                with col_delete:
+                     delete_clicked = st.form_submit_button("🔴 Excluir Registro", type="primary")
+
+                if edit_submitted:
+                    id_novo_tipo = tipos_dict[novo_tipo_pai]
+                    id_tipo_pai_atual = tipos_dict[tipo_pai_atual]
+                    
+                    # Verifica se houve alteração
+                    if novo_descricao != descricao_atual or id_novo_tipo != id_tipo_pai_atual:
+                        
+                        # Campos para o UPDATE
+                        campos_valores = {
+                            "ID_TipoTransacao": id_novo_tipo, 
+                            "DSC_CategoriaTransacao": novo_descricao
+                        }
+                        
+                        if atualizar_registro_dimensao("dim_Categoria", "ID_Categoria", id_selecionado, campos_valores):
+                            st.success(f"Categoria ID {id_selecionado} atualizada com sucesso.")
+                            st.rerun()
+                    else:
+                        st.info("Nenhuma alteração detectada para salvar.")
+                
+                if delete_clicked:
+                    st.session_state.confirm_delete_id_cat = id_selecionado
+                    st.session_state.confirm_delete_nome_cat = descricao_atual
+                    st.rerun() 
+            # --- FIM BLOC DA EDIÇÃO ---
+
+        except Exception as e:
+            st.error(f"Erro ao carregar dados do ID. Detalhe: {e}")
+            
+    
+    # --- LÓGICA DE CONFIRMAÇÃO DE EXCLUSÃO ---
+    if st.session_state.get('confirm_delete_id_cat'):
+        id_del = st.session_state.confirm_delete_id_cat
+        nome_del = st.session_state.confirm_delete_nome_cat
+        
+        st.markdown("---")
+        st.error(f"⚠️ CONFIRMAÇÃO DE EXCLUSÃO: Tem certeza que deseja EXCLUIR a Categoria '{nome_del}' (ID {id_del})? Esta ação é irreversível e impedirá a exclusão se houver Subcategorias ou Transações vinculadas.")
+        
+        col_conf_sim, col_conf_nao = st.columns(2)
+        
+        with col_conf_sim:
+            if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_cat_sim"):
+                if deletar_registro_dimensao("dim_Categoria", "ID_Categoria", id_del):
+                    st.success(f"Categoria ID {id_del} excluída com sucesso.")
+                    st.session_state.confirm_delete_id_cat = None
+                    st.rerun()
+        with col_conf_nao:
+            if st.button("CANCELAR Exclusão", key="final_delete_cat_nao"):
+                st.session_state.confirm_delete_id_cat = None
+                st.rerun()
+
+def formulario_subcategoria():
+    st.header("Cadastro e Manutenção de Subcategorias")
+
+    # 1. Busca os dados de Categoria para os dropdowns (dim_Categoria)
+    df_categorias = consultar_dados("dim_Categoria")
+    
+    if df_categorias.empty:
+        st.warning("É necessário cadastrar pelo menos uma Categoria antes de cadastrar Subcategorias.")
+        return
+        
+    # Mapeamento da Categoria (Nome -> ID)
     categorias_dict = dict(zip(df_categorias['DSC_CategoriaTransacao'], df_categorias['ID_Categoria']))
     categorias_nomes = list(categorias_dict.keys())
+
+    # ----------------------------------------------------
+    # A) CADASTRO 
+    # ----------------------------------------------------
+    st.subheader("1. Inserir Nova Subcategoria")
     
     with st.form("subcategoria_form"):
-        categoria_selecionada_nome = st.selectbox(
+        # Campo de entrada
+        categoria_selecionada = st.selectbox(
             "Selecione a Categoria Pai:",
             categorias_nomes
         )
-        descricao_subcategoria = st.text_input("Descrição da Subcategoria (ex: Almoço, Supermercado, Aluguel)")
+        # Coluna de descrição no DB: DSC_SubcategoriaTransacao
+        descricao = st.text_input("Descrição da Subcategoria (ex: Aluguel, Internet)")
         
-        submitted = st.form_submit_button("Inserir Subcategoria")
+        submitted = st.form_submit_button("Inserir Nova Subcategoria")
         
         if submitted:
-            if descricao_subcategoria and categoria_selecionada_nome:
-                id_categoria = categorias_dict[categoria_selecionada_nome]
+            if descricao:
+                id_categoria = categorias_dict[categoria_selecionada]
                 
+                # Inserção na tabela dim_Subcategoria
                 inserir_dados(
                     tabela="dim_Subcategoria",
-                    dados=(id_categoria, descricao_subcategoria),
-                    campos=("ID_Categoria", "DSC_SubcategoriaTransacao")
+                    dados=(id_categoria, descricao,),
+                    campos=("ID_Categoria", "DSC_SubcategoriaTransacao") 
                 )
             else:
-                st.warning("Todos os campos são obrigatórios.")
+                st.warning("A Descrição e a Categoria são obrigatórias.")
 
-    # Exibe a tabela usando a View (nomes amigáveis: Categoria, Subcategoria)
-    st.subheader("Registros Existentes")
-    df_subcategorias = consultar_dados("dim_Subcategoria")
-    st.dataframe(df_subcategorias, use_container_width=True)
+    # ----------------------------------------------------
+    # B) VISUALIZAÇÃO E SELEÇÃO MANUAL (EDIÇÃO/EXCLUSÃO)
+    # ----------------------------------------------------
+    st.markdown("---")
+    st.subheader("2. Editar ou Excluir Registros Existentes")
+    
+    # *** USANDO A VIEW INFORMADA PELO USUÁRIO (vw_dim_Subcategoria) ***
+    df_subcategorias = consultar_dados("vw_dim_Subcategoria") 
+    
+    if df_subcategorias.empty:
+        st.info("Nenhuma subcategoria registrada.")
+        return
+
+    # *** CORREÇÃO DO KEY ERROR: Usando os nomes exatos de alias da sua VIEW ***
+    df_exibicao = df_subcategorias.rename(columns={
+        'ID': 'ID',                         # Coluna da View
+        'Subcategoria': 'Descrição',        # Coluna da View
+        'Categoria': 'Categoria Pai'        # Coluna da View
+    })[['ID', 'Descrição', 'Categoria Pai']] # Seleção final corrigida
+    
+    # Exibe a tabela completa para referência
+    st.dataframe(df_exibicao, hide_index=True, use_container_width=True)
+    
+    # --- SELEÇÃO MANUAL DO ID ---
+    lista_ids = [''] + df_exibicao['ID'].astype(str).tolist()
+    id_selecionado_str = st.selectbox(
+        "Selecione o ID da Subcategoria para Editar/Excluir:", 
+        options=lista_ids, 
+        key="subcategoria_id_selector" 
+    )
+    
+    id_selecionado = None
+    
+    if id_selecionado_str and id_selecionado_str != '':
+        try:
+            id_selecionado = int(id_selecionado_str)
+            
+            # Busca os dados do ID selecionado
+            dados_selecionados = df_exibicao[df_exibicao['ID'] == id_selecionado].iloc[0]
+            descricao_atual = dados_selecionados['Descrição']
+            categoria_pai_atual = dados_selecionados['Categoria Pai']
+            
+            st.markdown(f"#### Manutenção da Subcategoria: ID {id_selecionado} - {descricao_atual}")
+            
+            # --- BLOC DA EDIÇÃO ---
+            with st.form("edicao_subcategoria_form"):
+                
+                # Permite mudar a Categoria Pai
+                novo_categoria_pai = st.selectbox(
+                    "Mudar Categoria Pai:", 
+                    categorias_nomes,
+                    index=categorias_nomes.index(categoria_pai_atual)
+                )
+                novo_descricao = st.text_input("Nova Descrição:", value=descricao_atual)
+                
+                # Botões de Ação
+                col_edit, col_delete = st.columns([1, 1])
+                
+                with col_edit:
+                    edit_submitted = st.form_submit_button("Salvar Edição", type="secondary")
+                with col_delete:
+                     delete_clicked = st.form_submit_button("🔴 Excluir Registro", type="primary")
+
+                if edit_submitted:
+                    id_nova_categoria = categorias_dict[novo_categoria_pai]
+                    
+                    # Busca o ID da Categoria Pai atual 
+                    id_categoria_pai_atual = categorias_dict[categoria_pai_atual]
+                    
+                    # Verifica se houve alteração
+                    if novo_descricao != descricao_atual or id_nova_categoria != id_categoria_pai_atual:
+                        
+                        # Campos para o UPDATE
+                        campos_valores = {
+                            "ID_Categoria": id_nova_categoria, # Atualiza o ID da Categoria
+                            "DSC_SubcategoriaTransacao": novo_descricao
+                        }
+                        
+                        if atualizar_registro_dimensao("dim_Subcategoria", "ID_Subcategoria", id_selecionado, campos_valores):
+                            st.success(f"Subcategoria ID {id_selecionado} atualizada com sucesso.")
+                            st.rerun()
+                    else:
+                        st.info("Nenhuma alteração detectada para salvar.")
+                
+                if delete_clicked:
+                    st.session_state.confirm_delete_id_sub = id_selecionado
+                    st.session_state.confirm_delete_nome_sub = descricao_atual
+                    st.rerun() 
+            # --- FIM BLOC DA EDIÇÃO ---
+
+        except Exception as e:
+            st.error(f"Erro ao carregar dados do ID. Verifique se o ID existe ou se os nomes das colunas da View estão corretos: {e}")
+            
+    
+    # --- LÓGICA DE CONFIRMAÇÃO DE EXCLUSÃO ---
+    if st.session_state.get('confirm_delete_id_sub'):
+        id_del = st.session_state.confirm_delete_id_sub
+        nome_del = st.session_state.confirm_delete_nome_sub
+        
+        st.markdown("---")
+        st.error(f"⚠️ CONFIRMAÇÃO DE EXCLUSÃO: Tem certeza que deseja EXCLUIR a Subcategoria '{nome_del}' (ID {id_del})? Esta ação é irreversível.")
+        
+        col_conf_sim, col_conf_nao = st.columns(2)
+        
+        with col_conf_sim:
+            if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_sub_sim"):
+                # O deletar_registro_dimensao já lida com o erro de Foreign Key
+                if deletar_registro_dimensao("dim_Subcategoria", "ID_Subcategoria", id_del):
+                    st.success(f"Subcategoria ID {id_del} excluída com sucesso.")
+                    st.session_state.confirm_delete_id_sub = None
+                    st.rerun()
+        with col_conf_nao:
+            if st.button("CANCELAR Exclusão", key="final_delete_sub_nao"):
+                st.session_state.confirm_delete_id_sub = None
+                st.rerun()
 
 def formulario_usuario():
     st.header("Cadastro de Usuário")
@@ -857,6 +1190,57 @@ def editar_transacao():
             st.error("Erro: O ID selecionado não é um número válido.")
     else:
         st.info("O formulário de edição aparecerá aqui após a seleção do ID.")
+
+def deletar_registro_dimensao(tabela, id_coluna, id_valor):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Monta o comando DELETE: DELETE FROM tabela WHERE id_coluna = ?
+    command = f"DELETE FROM {tabela} WHERE {id_coluna} = ?"
+    
+    try:
+        cursor.execute(command, id_valor)
+        conn.commit()
+        st.cache_data.clear() # Limpa o cache para que as tabelas sejam recarregadas
+        return True
+    except pyodbc.Error as ex:
+        # Erro comum: foreign key violation (o registro está sendo usado em outra tabela)
+        # Código de erro '23000' é genérico para Constraint Violation
+        if '23000' in str(ex):
+             st.error(f"⚠️ Erro de Integridade: Não é possível excluir este registro. Ele está sendo usado em outra tabela (por exemplo, na tabela de Transações).")
+        else:
+             st.error(f"Erro ao excluir registro de {tabela}: {ex}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def atualizar_registro_dimensao(tabela, id_coluna, id_valor, campos_valores: dict):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Monta a string de SET: "Campo1 = ?, Campo2 = ?"
+    set_clause = ", ".join([f"{campo} = ?" for campo in campos_valores.keys()])
+    
+    # Monta a lista de valores (na ordem dos campos, seguido pelo ID)
+    valores = list(campos_valores.values())
+    valores.append(id_valor)
+    
+    command = f"UPDATE {tabela} SET {set_clause} WHERE {id_coluna} = ?"
+    
+    try:
+        cursor.execute(command, valores)
+        conn.commit()
+        st.cache_data.clear()
+        return True
+    except pyodbc.Error as ex:
+        st.error(f"Erro ao atualizar registro em {tabela}: {ex}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
 
 if 'menu_selecionado' not in st.session_state:
     st.session_state.menu_selecionado = "Registrar Transação"
