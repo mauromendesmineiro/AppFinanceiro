@@ -19,3 +19,12 @@ __pycache__/
 
 # Pasta excluída do rastreamento Git, mas mantida localmente
 password_manager/
+
+# Arquivos de Segredos e Configurações de Ambiente
+.streamlit/secrets.toml  # Não envia as credenciais
+.venv/                   # Não envia a pasta de ambiente virtual do Python (venv)
+venv/                    # Não envia a pasta venv (outra variação)
+
+# Arquivos de Banco de Dados e Queries
+*.sql                    # Não envia nenhum arquivo .sql (como queries.sql ou dbFinanceiro_queries.sql)
+*.db                     # Caso você mude para SQLite, por exemplo
