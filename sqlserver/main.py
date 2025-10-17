@@ -1344,88 +1344,164 @@ def atualizar_registro_dimensao(tabela, campos, valores, id_registro):
 if 'menu_selecionado' not in st.session_state:
     st.session_state.menu_selecionado = "Registrar Transação"
 
+def autenticar_usuario(login, senha):
+    """Verifica se o login e a senha correspondem a um registro em dim_usuario."""
+    conn = None
+    usuario_info = {}
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Seleciona o nome e o login, usando as colunas 'login' e 'senha' para autenticação
+        sql = "SELECT dsc_nome, login FROM dim_usuario WHERE login = %s AND senha = %s;"
+        cursor.execute(sql, (login, senha))
+        
+        resultado = cursor.fetchone() 
+        
+        if resultado:
+            usuario_info['nome_completo'] = resultado[0] # dsc_nome
+            usuario_info['login'] = resultado[1]        # login
+            
+    except Exception as e:
+        # Erro de conexão/autenticação
+        st.error("Ocorreu um erro na autenticação. Verifique a conexão com o banco de dados.")
+        print(f"Erro de autenticação: {e}")
+        usuario_info = {}
+    finally:
+        if conn:
+            conn.close()
+            
+    return usuario_info # Retorna um dicionário com nome e login ou um dicionário vazio
+
+def login_page():
+    """Exibe a tela de login e processa a autenticação."""
+    st.sidebar.empty() # Garante que a sidebar está limpa na tela de login
+    
+    st.title("Acesso Restrito ao Sistema Financeiro")
+    st.markdown("---")
+    
+    # Centraliza o formulário
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.subheader("Login de Usuário")
+        
+        with st.form("login_form"):
+            login = st.text_input("Usuário (Login)", key="login_input")
+            senha = st.text_input("Senha", type="password", key="senha_input")
+            submitted = st.form_submit_button("Entrar")
+            
+            if submitted:
+                usuario_info = autenticar_usuario(login, senha)
+                
+                if usuario_info:
+                    # 1. Sucesso: Atualizar estado e reran
+                    st.session_state.logged_in = True
+                    st.session_state.nome_completo = usuario_info['nome_completo']
+                    st.session_state.login = usuario_info['login'] # Armazena o login (mauro ou marta)
+                    st.session_state.menu_selecionado = "Dashboard"
+                    st.rerun()
+                else:
+                    # 2. Falha
+                    st.error("Login ou Senha incorretos.")
+                    
+        st.info("Acesso restrito. Credenciais necessárias para continuar.")
+
 def main():
-    st.title("Finanças Pessoais")
-    st.sidebar.title("Menu")
     
     # ----------------------------------------------------
-    # 1. BOTÃO DE REGISTRO DE FATO
+    # 0. INICIALIZAÇÃO DO ESTADO DE SESSÃO (Login)
     # ----------------------------------------------------
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
     
-    st.sidebar.subheader("Transações")
-    
-    if st.sidebar.button("📝 Registrar Transação", key="btn_fact_transacao"):
-        st.session_state.menu_selecionado = "Transação"
-    if st.sidebar.button("💰 Registrar Salário", key="btn_fact_salario"):
-        st.session_state.menu_selecionado = "Salário"
-
-    st.sidebar.markdown("---") # Linha separadora
-
     # ----------------------------------------------------
-    # 2. BOTÕES DE ANÁLISE
+    # 1. CONTROLE DE ACESSO
     # ----------------------------------------------------
-    st.sidebar.subheader("Análises e Saldos")
-    
-    if st.sidebar.button("📊 Acerto de Contas", key="btn_analise_acerto"):
-        st.session_state.menu_selecionado = "Acerto de Contas"
+    if not st.session_state.logged_in:
+        # Se não estiver logado, exibe a página de login
+        login_page()
+    else:
+        # ----------------------------------------------------
+        # TUDO ABAIXO SÓ É EXIBIDO SE O USUÁRIO ESTIVER LOGADO
+        # ----------------------------------------------------
         
-    st.sidebar.markdown("---")
-    
-    # ----------------------------------------------------
-    # 3. BOTÕES DE MANUTENÇÃO E CORREÇÃO (NOVO BLOCO)
-    # ----------------------------------------------------
-    st.sidebar.subheader("Manutenção de Dados")
-    
-    if st.sidebar.button("✏️ Corrigir Transação", key="btn_corrigir_transacao"): # <-- NOVO BOTÃO
-        st.session_state.menu_selecionado = "Corrigir Transação"
+        # 1. INICIALIZAÇÃO DO ESTADO DE SESSÃO (Menu)
+        if 'menu_selecionado' not in st.session_state:
+            st.session_state.menu_selecionado = "Dashboard"
         
-    st.sidebar.markdown("---")
+        # Saudação com o nome completo
+        st.title(f"Bem-vindo(a), {st.session_state.nome_completo}!")
+        st.markdown("---")
 
-    # ----------------------------------------------------
-    # 4. BOTÕES DE CADASTRO DIMENSIONAL
-    # ----------------------------------------------------
-    
-    # Cria o agrupador que se expande e recolhe
-    with st.sidebar.expander("Formulários", expanded=True):
-        
-        # Lista de todas as opções de formulário
-        opcoes_cadastro = {
-            "Tipos de Transação": formulario_tipo_transacao,
-            "Categorias": formulario_categoria,
-            "Subcategorias": formulario_subcategoria,
-            "Usuários": formulario_usuario
-        }
-        
-        # Cria um botão para cada opção de cadastro
-        for nome_opcao, _ in opcoes_cadastro.items():
-            # O st.button precisa de uma chave (key) se estiver em um loop
-            if st.button(nome_opcao, key=f"btn_{nome_opcao}"):
-                # Se o botão for clicado, atualiza o estado da sessão
-                st.session_state.menu_selecionado = nome_opcao
+        # ----------------------------------------------------
+        # 2. BOTÃO DE LOGOUT E MENU NA SIDEBAR
+        # ----------------------------------------------------
+        with st.sidebar:
+            if st.button("🔴 Sair (Logout)", type="primary"):
+                # Limpa o estado da sessão e força o reran para a tela de login
+                st.session_state.logged_in = False
+                st.session_state.nome_completo = None
+                st.session_state.login = None
+                st.rerun()
+                
+            # Restante da sidebar (Menus)
+            st.subheader("Menu Principal")
+            
+            opcoes_menu = {
+                "Dashboard": None,
+                "Transação": formulario_transacao,
+                "Salário": formulario_salario,
+                "Corrigir Transação": editar_transacao,
+                "Acerto de Contas": exibir_detalhe_rateio 
+            }
+            
+            # Cria um botão para cada opção de menu principal
+            for nome_opcao, _ in opcoes_menu.items():
+                if st.button(nome_opcao, key=f"btn_menu_{nome_opcao}"):
+                    st.session_state.menu_selecionado = nome_opcao
 
-    # ----------------------------------------------------
-    # 5. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
-    # ----------------------------------------------------
-    
-    # Exibe o formulário com base na opção armazenada no estado da sessão
-    opcao_atual = st.session_state.menu_selecionado
-    
-    if opcao_atual == "Acerto de Contas":
-        exibir_detalhe_rateio()
-    elif opcao_atual == "Transação":
-        formulario_transacao()
-    elif opcao_atual == "Salário":
-        formulario_salario()
-    elif opcao_atual == "Corrigir Transação": # <-- NOVO ELIF
-        editar_transacao() # <-- Chama a função que criamos
-    elif opcao_atual == "Tipos de Transação":
-        formulario_tipo_transacao()
-    elif opcao_atual == "Categorias":
-        formulario_categoria()
-    elif opcao_atual == "Subcategorias":
-        formulario_subcategoria()
-    elif opcao_atual == "Usuários":
-        formulario_usuario()
+            st.markdown("---")
+            st.subheader("Cadastros e Manutenção")
+            
+            # Opções de cadastro (Manutenção de Dimensões)
+            opcoes_cadastro = {
+                "Tipos de Transação": formulario_tipo_transacao,
+                "Categorias": formulario_categoria,
+                "Subcategorias": formulario_subcategoria,
+                "Usuários": formulario_usuario
+            }
+            
+            # Cria um botão para cada opção de cadastro
+            for nome_opcao, _ in opcoes_cadastro.items():
+                if st.button(nome_opcao, key=f"btn_{nome_opcao}"):
+                    st.session_state.menu_selecionado = nome_opcao
+
+        # ----------------------------------------------------
+        # 3. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
+        # ----------------------------------------------------
+        
+        # Exibe o formulário com base na opção armazenada no estado da sessão
+        opcao_atual = st.session_state.menu_selecionado
+        
+        if opcao_atual == "Dashboard":
+            st.info(f"Dashboard em construção. Use o menu lateral para cadastrar dados.")
+        elif opcao_atual == "Transação":
+            formulario_transacao()
+        elif opcao_atual == "Salário":
+            formulario_salario()
+        elif opcao_atual == "Corrigir Transação": 
+            editar_transacao()
+        elif opcao_atual == "Acerto de Contas":
+            exibir_detalhe_rateio()
+        elif opcao_atual == "Tipos de Transação":
+            formulario_tipo_transacao()
+        elif opcao_atual == "Categorias":
+            formulario_categoria()
+        elif opcao_atual == "Subcategorias":
+            formulario_subcategoria()
+        elif opcao_atual == "Usuários":
+            formulario_usuario()
 
 if __name__ == '__main__':
     main()
