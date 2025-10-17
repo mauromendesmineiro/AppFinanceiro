@@ -431,11 +431,11 @@ def formulario_subcategoria():
         st.info("Nenhuma subcategoria registrada.")
         return
 
-    # *** CORREÇÃO FINAL BASEADA NOS NOMES CONFIRMADOS: id, categoria, subcategoria ***
+    # *** CORREÇÃO DO KEY ERROR: Mapeando chaves em minúsculo ***
     df_exibicao = df_subcategorias.rename(columns={
         'id': 'ID',                         # Mapeia 'id' (minúsculo)
         'subcategoria': 'Descrição',        # Mapeia 'subcategoria' (minúsculo)
-        'categoria': 'Categoria Pai',       # CORREÇÃO FINAL: Mapeia 'categoria' (minúsculo)
+        'categoria': 'Categoria Pai',       # Mapeia 'categoria' (minúsculo)
         'datacriacao': 'DataCriacao'        # Coluna de data
     })[['ID', 'Descrição', 'Categoria Pai']] # Seleção final usa os nomes de exibição
     
