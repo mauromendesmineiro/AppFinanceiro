@@ -273,7 +273,7 @@ def formulario_categoria():
     df_exibicao = df_categorias.rename(columns={
         'ID': 'ID',                                # Coluna da View
         'Categoria': 'Descrição',                  # Coluna da View
-        'Tipo de Transacao': 'Tipo Pai'            # Coluna da View
+        'tipodetransacao': 'Tipo Pai'            # Coluna da View
     })[['ID', 'Descrição', 'Tipo Pai']] # <-- CORREÇÃO: REMOÇÃO DA COLUNA 'DataCriacao'
     
     # Exibe a tabela completa para referência
