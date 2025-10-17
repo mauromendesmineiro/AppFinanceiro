@@ -9,7 +9,6 @@ __pycache__/
 *.db
 *.key
 *.enc
-*.txt
 
 # Arquivos de Sistema
 .DS_Store

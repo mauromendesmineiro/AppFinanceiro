@@ -1,5 +1,5 @@
 import streamlit as st
-import pyodbc
+import psycopg2
 import pandas as pd
 import datetime
 
@@ -9,72 +9,88 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-@st.cache_resource
+#@st.cache_resource(ttl=600) 
 def get_connection():
-    # As credenciais são carregadas do arquivo secrets.toml (Streamlit Cloud)
-    # OBS: O nome da chave 'sqlserver' deve bater com a chave que você usará no secrets.toml
-    conn_details = st.secrets["sqlserver"] 
+    # As credenciais são carregadas do secrets.toml (bloco [postgresql])
+    conn_details = st.secrets["postgresql"] 
     
-    # A string de conexão agora usa as credenciais de usuário/senha para acesso remoto
-    # O DRIVER {ODBC Driver 17 for SQL Server} precisa ser instalado no ambiente Cloud,
-    # o que requer um passo a mais (mas vamos assumir que você está migrando para um 
-    # banco de dados em nuvem que exige UID/PWD).
-    CONNECTION_STRING_CLOUD = (
-        f'DRIVER={conn_details["driver"]};'
-        f'SERVER={conn_details["server"]};'
-        f'DATABASE={conn_details["database"]};'
-        f'UID={conn_details["username"]};'
-        f'PWD={conn_details["password"]};'
+    conn = psycopg2.connect(
+        host=conn_details["server"],
+        database=conn_details["database"],
+        user=conn_details["username"],
+        password=conn_details["password"],
+        port=conn_details["port"],
+        sslmode='require' # O Neon exige SSL
     )
-    
-    conn = pyodbc.connect(CONNECTION_STRING_CLOUD)
     return conn
 
+@st.cache_data(ttl=600)
 def consultar_dados(tabela_ou_view, usar_view=False):
-    conn = get_connection()
-    
-    # ----------------------------------------------------
-    # Lógica de montagem da query SIMPLIFICADA E CORRIGIDA
-    # Agora, tabela_ou_view DEVE conter o prefixo (vw_, dim_, stg_)
-    # ----------------------------------------------------
-    sql_query = f"SELECT * FROM {tabela_ou_view}" 
+    # Assegure-se que o nome da tabela/view esteja em minúsculo!
+    tabela_ou_view = tabela_ou_view.lower() 
 
+    conn = None # Inicializa conn como None
+    df = pd.DataFrame()
+    
     try:
-        df = pd.read_sql(sql_query, conn)
-        conn.close()
-        return df
-    except pd.io.sql.DatabaseError as e:
-        # Se o erro original não tivesse o 'vw_vw_', usar_view poderia ser usado aqui
-        # Mas, para resolver o 'vw_vw_', esta lógica é mais segura.
-        st.error(f"Erro ao consultar dados na {tabela_ou_view}: {e}")
-        conn.close()
-        return pd.DataFrame()
+        conn = get_connection()
+        sql_query = f"SELECT * FROM {tabela_ou_view}"
+        
+        # O pd.read_sql usa a conexão internamente
+        df = pd.read_sql(sql_query, conn) 
+        
+    except psycopg2.Error as e:
+        st.error(f"Erro ao consultar dados no Neon: {e}")
+        
     except Exception as e:
         st.error(f"Erro inesperado ao conectar ou consultar: {e}")
-        if conn: conn.close()
-        return pd.DataFrame()
+        
+    finally:
+        # Garante que a conexão será fechada, independentemente de erro ou sucesso
+        if conn:
+            conn.close()
+            
+    return df
 
 def inserir_dados(tabela, dados, campos):
+    conn = None
+    tabela_lower = tabela.lower()
+    
+    # GARANTE que os nomes de campo também estão em minúsculo (Padrão PostgreSQL)
+    campos_lower = [c.lower() for c in campos]
+    
+    # Constrói o SQL: Exemplo: INSERT INTO dim_tipotransacao (dsc_tipotransacao) VALUES (%s)
+    placeholders = ', '.join(['%s'] * len(dados))
+    sql = f"INSERT INTO {tabela_lower} ({', '.join(campos_lower)}) VALUES ({placeholders})"
+    
     try:
-        conn = pyodbc.connect(CONNECTION_STRING)
+        conn = get_connection()
         cursor = conn.cursor()
         
-        colunas = ", ".join(campos)
-        placeholders = ", ".join(["?"] * len(campos))
+        # 1. EXECUÇÃO: Passa o SQL e os dados (a tupla de valores)
+        # Exemplo: cursor.execute("...", ('Receita',))
+        cursor.execute(sql, dados) 
         
-        sql_insert = f"INSERT INTO {tabela} ({colunas}) VALUES ({placeholders})"
+        # 2. COMMIT: ESSENCIAL para salvar os dados
+        conn.commit() 
         
-        cursor.execute(sql_insert, *dados)
-        conn.commit()
-        st.success(f"Dados inseridos com sucesso na tabela {tabela}!")
+        # Feedback de Sucesso no Streamlit (Opcional, mas recomendado)
+        st.success(f"Registro inserido com sucesso na tabela {tabela_lower.upper()}!")
         
-        st.cache_data.clear() # Limpa o cache para atualizar as tabelas
+        return True
         
-    except pyodbc.Error as ex:
-        st.error(f"Erro ao inserir dados na {tabela}: {ex}")
-    finally:
-        if 'conn' in locals() and conn:
-            conn.close()
+    except psycopg2.Error as ex: # <<< LINHA 82 (Provavelmente este bloco)
+        # ESTE BLOCO DE CÓDIGO TEM QUE SER RECÉUADO
+        st.error(f"Erro do banco de dados ao inserir: {ex}")
+        if conn: conn.rollback()
+        
+    except Exception as e:
+        # ESTE BLOCO DE CÓDIGO TAMBÉM TEM QUE SER RECÉUADO
+        st.error(f"Erro inesperado: {e}")
+        if conn: conn.rollback()
+        
+    finally: # <<< LINHA 85 (Deve estar alinhada com try e except)
+        if conn: conn.close()
 
 def formulario_tipo_transacao():
     st.header("Cadastro e Manutenção de Tipo de Transação")
@@ -94,9 +110,9 @@ def formulario_tipo_transacao():
             if descricao:
                 # Assume que a função inserir_dados está definida
                 inserir_dados(
-                    tabela="dim_TipoTransacao",
+                    tabela="dim_tipotransacao",
                     dados=(descricao,),
-                    campos=("DSC_TipoTransacao",)
+                    campos=("dsc_tipotransacao",)
                 )
             else:
                 st.warning("O campo Descrição é obrigatório.")
@@ -107,14 +123,14 @@ def formulario_tipo_transacao():
     st.markdown("---")
     st.subheader("2. Editar ou Excluir Registros Existentes")
     
-    df_tipos = consultar_dados("dim_TipoTransacao")
+    df_tipos = consultar_dados("dim_tipotransacao")
     
     if df_tipos.empty:
         st.info("Nenhum tipo de transação registrado.")
         return
 
     # Renomeação para exibição e seleção
-    df_exibicao = df_tipos.rename(columns={'ID_TipoTransacao': 'ID', 'DSC_TipoTransacao': 'Descrição'})[['ID', 'Descrição']]
+    df_exibicao = df_tipos.rename(columns={'id_tipotransacao': 'ID', 'dsc_tipotransacao': 'Descrição'})[['ID', 'Descrição']]
     
     # Exibe a tabela completa para referência
     st.dataframe(df_exibicao, hide_index=True, use_container_width=True)
@@ -155,8 +171,8 @@ def formulario_tipo_transacao():
                 if edit_submitted:
                     if novo_descricao and novo_descricao != descricao_atual:
                         # Assumindo que atualizar_registro_dimensao está definida
-                        campos_valores = {"DSC_TipoTransacao": novo_descricao}
-                        if atualizar_registro_dimensao("dim_TipoTransacao", "ID_TipoTransacao", id_selecionado, campos_valores):
+                        campos_valores = {"dsc_tipotransacao": novo_descricao}
+                        if atualizar_registro_dimensao("dim_tipotransacao", "id_tipotransacao", id_selecionado, campos_valores):
                             st.success(f"Tipo ID {id_selecionado} atualizado para '{novo_descricao}'.")
                             st.rerun()
                     elif novo_descricao == descricao_atual:
@@ -189,7 +205,7 @@ def formulario_tipo_transacao():
         with col_conf_sim:
             if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_tipo_sim"):
                 # Assumindo que deletar_registro_dimensao está definida
-                if deletar_registro_dimensao("dim_TipoTransacao", "ID_TipoTransacao", id_del):
+                if deletar_registro_dimensao("dim_tipotransacao", "id_tipotransacao", id_del):
                     st.success(f"Tipo ID {id_del} excluído com sucesso.")
                     st.session_state.confirm_delete_id_tipo = None
                     st.rerun()
@@ -201,15 +217,15 @@ def formulario_tipo_transacao():
 def formulario_categoria():
     st.header("Cadastro e Manutenção de Categorias")
 
-    # 1. Busca os dados de Tipo de Transação para os dropdowns (dim_TipoTransacao)
-    df_tipos = consultar_dados("dim_TipoTransacao")
+    # 1. Busca os dados de Tipo de Transação para os dropdowns (dim_tipotransacao)
+    df_tipos = consultar_dados("dim_tipotransacao")
     
     if df_tipos.empty:
         st.warning("É necessário cadastrar pelo menos um Tipo de Transação (Receita/Despesa) antes de cadastrar Categorias.")
         return
         
     # Mapeamento do Tipo (Nome -> ID)
-    tipos_dict = dict(zip(df_tipos['DSC_TipoTransacao'], df_tipos['ID_TipoTransacao']))
+    tipos_dict = dict(zip(df_tipos['dsc_tipotransacao'], df_tipos['id_tipotransacao']))
     tipos_nomes = list(tipos_dict.keys())
 
     # ----------------------------------------------------
@@ -231,11 +247,11 @@ def formulario_categoria():
             if descricao:
                 id_tipo = tipos_dict[tipo_selecionado]
                 
-                # Inserção na tabela dim_Categoria
+                # Inserção na tabela dim_categoria
                 inserir_dados(
-                    tabela="dim_Categoria",
+                    tabela="dim_categoria",
                     dados=(id_tipo, descricao,),
-                    campos=("ID_TipoTransacao", "DSC_CategoriaTransacao") 
+                    campos=("id_tipotransacao", "dsc_categoriatransacao") 
                 )
             else:
                 st.warning("A Descrição e o Tipo de Transação são obrigatórios.")
@@ -246,8 +262,8 @@ def formulario_categoria():
     st.markdown("---")
     st.subheader("2. Editar ou Excluir Registros Existentes")
     
-    # USANDO A VIEW INFORMADA PELO USUÁRIO (vw_dim_Categoria)
-    df_categorias = consultar_dados("vw_dim_Categoria") 
+    # USANDO A VIEW INFORMADA PELO USUÁRIO (vw_dim_categoria)
+    df_categorias = consultar_dados("vw_dim_categoria") 
     
     if df_categorias.empty:
         st.info("Nenhuma categoria registrada.")
@@ -312,11 +328,11 @@ def formulario_categoria():
                         
                         # Campos para o UPDATE
                         campos_valores = {
-                            "ID_TipoTransacao": id_novo_tipo, 
-                            "DSC_CategoriaTransacao": novo_descricao
+                            "id_tipotransacao": id_novo_tipo, 
+                            "dsc_categoriatransacao": novo_descricao
                         }
                         
-                        if atualizar_registro_dimensao("dim_Categoria", "ID_Categoria", id_selecionado, campos_valores):
+                        if atualizar_registro_dimensao("dim_categoria", "id_categoria", id_selecionado, campos_valores):
                             st.success(f"Categoria ID {id_selecionado} atualizada com sucesso.")
                             st.rerun()
                     else:
@@ -344,7 +360,7 @@ def formulario_categoria():
         
         with col_conf_sim:
             if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_cat_sim"):
-                if deletar_registro_dimensao("dim_Categoria", "ID_Categoria", id_del):
+                if deletar_registro_dimensao("dim_categoria", "id_categoria", id_del):
                     st.success(f"Categoria ID {id_del} excluída com sucesso.")
                     st.session_state.confirm_delete_id_cat = None
                     st.rerun()
@@ -356,15 +372,15 @@ def formulario_categoria():
 def formulario_subcategoria():
     st.header("Cadastro e Manutenção de Subcategorias")
 
-    # 1. Busca os dados de Categoria para os dropdowns (dim_Categoria)
-    df_categorias = consultar_dados("dim_Categoria")
+    # 1. Busca os dados de Categoria para os dropdowns (dim_categoria)
+    df_categorias = consultar_dados("dim_categoria")
     
     if df_categorias.empty:
         st.warning("É necessário cadastrar pelo menos uma Categoria antes de cadastrar Subcategorias.")
         return
         
     # Mapeamento da Categoria (Nome -> ID)
-    categorias_dict = dict(zip(df_categorias['DSC_CategoriaTransacao'], df_categorias['ID_Categoria']))
+    categorias_dict = dict(zip(df_categorias['dsc_categoriatransacao'], df_categorias['id_categoria']))
     categorias_nomes = list(categorias_dict.keys())
 
     # ----------------------------------------------------
@@ -378,7 +394,7 @@ def formulario_subcategoria():
             "Selecione a Categoria Pai:",
             categorias_nomes
         )
-        # Coluna de descrição no DB: DSC_SubcategoriaTransacao
+        # Coluna de descrição no DB: dsc_subcategoriatransacao
         descricao = st.text_input("Descrição da Subcategoria (ex: Aluguel, Internet)")
         
         submitted = st.form_submit_button("Inserir Nova Subcategoria")
@@ -387,11 +403,11 @@ def formulario_subcategoria():
             if descricao:
                 id_categoria = categorias_dict[categoria_selecionada]
                 
-                # Inserção na tabela dim_Subcategoria
+                # Inserção na tabela dim_subcategoria
                 inserir_dados(
-                    tabela="dim_Subcategoria",
+                    tabela="dim_subcategoria",
                     dados=(id_categoria, descricao,),
-                    campos=("ID_Categoria", "DSC_SubcategoriaTransacao") 
+                    campos=("id_categoria", "dsc_subcategoriatransacao") 
                 )
             else:
                 st.warning("A Descrição e a Categoria são obrigatórias.")
@@ -402,8 +418,8 @@ def formulario_subcategoria():
     st.markdown("---")
     st.subheader("2. Editar ou Excluir Registros Existentes")
     
-    # *** USANDO A VIEW INFORMADA PELO USUÁRIO (vw_dim_Subcategoria) ***
-    df_subcategorias = consultar_dados("vw_dim_Subcategoria") 
+    # *** USANDO A VIEW INFORMADA PELO USUÁRIO (vw_dim_subcategoria) ***
+    df_subcategorias = consultar_dados("vw_dim_subcategoria") 
     
     if df_subcategorias.empty:
         st.info("Nenhuma subcategoria registrada.")
@@ -470,11 +486,11 @@ def formulario_subcategoria():
                         
                         # Campos para o UPDATE
                         campos_valores = {
-                            "ID_Categoria": id_nova_categoria, # Atualiza o ID da Categoria
-                            "DSC_SubcategoriaTransacao": novo_descricao
+                            "id_categoria": id_nova_categoria, # Atualiza o ID da Categoria
+                            "dsc_subcategoriatransacao": novo_descricao
                         }
                         
-                        if atualizar_registro_dimensao("dim_Subcategoria", "ID_Subcategoria", id_selecionado, campos_valores):
+                        if atualizar_registro_dimensao("dim_subcategoria", "id_subcategoria", id_selecionado, campos_valores):
                             st.success(f"Subcategoria ID {id_selecionado} atualizada com sucesso.")
                             st.rerun()
                     else:
@@ -503,7 +519,7 @@ def formulario_subcategoria():
         with col_conf_sim:
             if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_sub_sim"):
                 # O deletar_registro_dimensao já lida com o erro de Foreign Key
-                if deletar_registro_dimensao("dim_Subcategoria", "ID_Subcategoria", id_del):
+                if deletar_registro_dimensao("dim_subcategoria", "id_subcategoria", id_del):
                     st.success(f"Subcategoria ID {id_del} excluída com sucesso.")
                     st.session_state.confirm_delete_id_sub = None
                     st.rerun()
@@ -524,16 +540,16 @@ def formulario_usuario():
         if submitted:
             if nome:
                 inserir_dados(
-                    tabela="dim_Usuario",
+                    tabela="dim_usuario",
                     dados=(nome,),
-                    campos=("DSC_Nome",) # Coluna original
+                    campos=("dsc_nome",) # Coluna original
                 )
             else:
                 st.warning("O campo Nome é obrigatório.")
 
     # Exibe a tabela usando a View (nomes amigáveis: ID, Nome)
     st.subheader("Registros Existentes")
-    df_usuarios = consultar_dados("dim_Usuario")
+    df_usuarios = consultar_dados("dim_usuario")
     st.dataframe(df_usuarios, use_container_width=True)
 
 def formulario_salario():
@@ -541,19 +557,19 @@ def formulario_salario():
 
     # 1. Consulta o Usuário para o Dropdown
     try:
-        df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
+        df_usuarios = consultar_dados("dim_usuario", usar_view=False)
     except Exception:
-        df_usuarios = pd.DataFrame(columns=['ID_Usuario', 'DSC_Nome'])
+        df_usuarios = pd.DataFrame(columns=['id_usuario', 'dsc_nome'])
 
     if df_usuarios.empty:
         st.warning("Primeiro, cadastre pelo menos um Usuário na aba 'Usuário'.")
         if 'consultar_dados' not in globals():
-            st.error("ERRO: A função 'consultar_dados' não está definida ou a tabela 'dim_Usuario' está vazia.")
+            st.error("ERRO: A função 'consultar_dados' não está definida ou a tabela 'dim_usuario' está vazia.")
             return
         return
 
     # Mapeamento do Usuário (Nome -> ID)
-    usuarios_dict = dict(zip(df_usuarios['DSC_Nome'], df_usuarios['ID_Usuario']))
+    usuarios_dict = dict(zip(df_usuarios['dsc_nome'], df_usuarios['id_usuario']))
     usuarios_nomes = list(usuarios_dict.keys())
     
     # ------------------ BLOC FORMULÁRIO (INALTERADO) ------------------
@@ -575,9 +591,9 @@ def formulario_salario():
                 
                 # --- CORREÇÃO CRÍTICA: FUNÇÃO DE INSERÇÃO DESCOMENTADA ---
                 inserir_dados(
-                    tabela="fact_Salario", 
+                    tabela="fact_salario", 
                     dados=(id_usuario, valor_salario, data_recebimento, observacao),
-                    campos=("ID_Usuario", "VL_Salario", "DT_Recebimento", "DSC_Observacao")
+                    campos=("id_usuario", "vl_salario", "dt_recebimento", "dsc_observacao")
                 )
                 # --------------------------------------------------------
                 
@@ -591,7 +607,7 @@ def formulario_salario():
     st.subheader("Salários Registrados")
     
     # 1. Consulta a View que já tem o Nome do Usuário, Ano e Mês
-    df_salarios = consultar_dados("vw_fact_Salarios") 
+    df_salarios = consultar_dados("vw_fact_salarios") 
 
     if not df_salarios.empty:
         
@@ -601,9 +617,9 @@ def formulario_salario():
         
         # 3. Renomeação das Colunas para Exibição
         df_exibicao = df_salarios.rename(columns={
-            'NomeUsuario': 'Usuário', 
-            'VL_Salario': 'Valor do Salário',
-            'DSC_Observacao': 'Descrição do Salário',
+            'nomeusuario': 'Usuário', 
+            'vl_salario': 'Valor do Salário',
+            'dsc_observacao': 'Descrição do Salário',
         })
         
         # 4. Aplica a Formatação de Moeda
@@ -631,17 +647,17 @@ def formulario_transacao():
     st.header("Registro de Transação")
     
     # 1. CARREGAR DADOS DAS DIMENSÕES
-    df_tipos = consultar_dados("dim_TipoTransacao", usar_view=False)
-    df_categorias = consultar_dados("dim_Categoria", usar_view=False)
-    df_subcategorias = consultar_dados("dim_Subcategoria", usar_view=False)
-    df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
+    df_tipos = consultar_dados("dim_tipotransacao", usar_view=False)
+    df_categorias = consultar_dados("dim_categoria", usar_view=False)
+    df_subcategorias = consultar_dados("dim_subcategoria", usar_view=False)
+    df_usuarios = consultar_dados("dim_usuario", usar_view=False)
 
     if df_tipos.empty or df_categorias.empty or df_subcategorias.empty or df_usuarios.empty:
         st.warning("É necessário cadastrar: Tipos, Categorias, Subcategorias e Usuários.")
         return
 
-    tipos_map = dict(zip(df_tipos['DSC_TipoTransacao'], df_tipos['ID_TipoTransacao']))
-    usuarios_map = dict(zip(df_usuarios['DSC_Nome'], df_usuarios['ID_Usuario']))
+    tipos_map = dict(zip(df_tipos['dsc_tipotransacao'], df_tipos['id_tipotransacao']))
+    usuarios_map = dict(zip(df_usuarios['dsc_nome'], df_usuarios['id_usuario']))
     
     tipos_nomes = list(tipos_map.keys())
     usuarios_nomes = list(usuarios_map.keys())
@@ -672,13 +688,13 @@ def formulario_transacao():
     # ----------------------------------------
     
     id_tipo_selecionado = tipos_map.get(tipo_nome)
-    df_cats_filtradas = df_categorias[df_categorias['ID_TipoTransacao'] == id_tipo_selecionado].copy()
+    df_cats_filtradas = df_categorias[df_categorias['id_tipotransacao'] == id_tipo_selecionado].copy()
     
     if df_cats_filtradas.empty:
          st.warning(f"Não há Categorias cadastradas para o Tipo '{tipo_nome}'. Cadastre uma Categoria.")
          categorias_nomes = ["(Cadastre uma Categoria)"]
     else:
-         categorias_nomes = df_cats_filtradas['DSC_CategoriaTransacao'].tolist()
+         categorias_nomes = df_cats_filtradas['dsc_categoriatransacao'].tolist()
 
     col4, col5 = st.columns(2)
     with col4:
@@ -699,16 +715,16 @@ def formulario_transacao():
          subcategorias_nomes = ["(Cadastre uma Subcategoria)"]
     else:
         # Verifica se a categoria selecionada existe no DataFrame filtrado, evitando erros.
-        if categoria_nome in df_cats_filtradas['DSC_CategoriaTransacao'].values:
-            id_categoria_selecionada = df_cats_filtradas[df_cats_filtradas['DSC_CategoriaTransacao'] == categoria_nome]['ID_Categoria'].iloc[0]
+        if categoria_nome in df_cats_filtradas['dsc_categoriatransacao'].values:
+            id_categoria_selecionada = df_cats_filtradas[df_cats_filtradas['dsc_categoriatransacao'] == categoria_nome]['id_categoria'].iloc[0]
             
-            df_subs_filtradas = df_subcategorias[df_subcategorias['ID_Categoria'] == id_categoria_selecionada].copy()
+            df_subs_filtradas = df_subcategorias[df_subcategorias['id_categoria'] == id_categoria_selecionada].copy()
             
             if df_subs_filtradas.empty:
                  st.warning(f"Não há Subcategorias cadastradas para a Categoria '{categoria_nome}'. Cadastre uma Subcategoria.")
                  subcategorias_nomes = ["(Cadastre uma Subcategoria)"]
             else:
-                 subcategorias_nomes = df_subs_filtradas['DSC_SubcategoriaTransacao'].tolist()
+                 subcategorias_nomes = df_subs_filtradas['dsc_subcategoriatransacao'].tolist()
         else:
             # Caso a categoria selecionada seja inválida após a troca de Tipo, usa placeholder.
             df_subs_filtradas = pd.DataFrame()
@@ -760,7 +776,7 @@ def formulario_transacao():
         is_valid_subcategory = subcategoria_nome != "(Cadastre uma Subcategoria)"
         
         # Mapeamento das opções de rádio de volta para N/S para o banco de dados
-        # O banco de dados (stg_Transacoes) espera 'S' ou 'N'
+        # O banco de dados (stg_transacoes) espera 'S' ou 'N'
         cd_e_dividido_bd = 'S' if e_dividido == 'Sim' else 'N'
         cd_foi_dividido_bd = 'S' if foi_dividido == 'Sim' else 'N'
 
@@ -771,34 +787,34 @@ def formulario_transacao():
             id_tipo = int(tipos_map[tipo_nome])
             
             # Usamos .iloc[0] para obter o ID
-            id_categoria_final = int(df_cats_filtradas[df_cats_filtradas['DSC_CategoriaTransacao'] == categoria_nome]['ID_Categoria'].iloc[0])
-            id_subcategoria_final = int(df_subs_filtradas[df_subs_filtradas['DSC_SubcategoriaTransacao'] == subcategoria_nome]['ID_Subcategoria'].iloc[0])
+            id_categoria_final = int(df_cats_filtradas[df_cats_filtradas['dsc_categoriatransacao'] == categoria_nome]['id_categoria'].iloc[0])
+            id_subcategoria_final = int(df_subs_filtradas[df_subs_filtradas['dsc_subcategoriatransacao'] == subcategoria_nome]['id_subcategoria'].iloc[0])
             
             dados = (data_transacao, id_tipo, tipo_nome, id_categoria_final, categoria_nome, 
                      id_subcategoria_final, subcategoria_nome, id_usuario, usuario_nome, 
                      descricao, valor_transacao, quem_pagou, cd_e_dividido_bd, cd_foi_dividido_bd)
             
-            campos = ("DT_DataTransacao", "ID_TipoTransacao", "DSC_TipoTransacao", "ID_Categoria", "DSC_CategoriaTransacao", 
-                      "ID_Subcategoria", "DSC_SubcategoriaTransacao", "ID_Usuario", "DSC_NomeUsuario",
-                      "DSC_Transacao", "VL_Transacao", "CD_QuemPagou", "CD_EDividido", "CD_FoiDividido") # MANTÉM NOME DA COLUNA SQL
+            campos = ("dt_datatransacao", "id_tipotransacao", "dsc_tipotransacao", "id_categoria", "dsc_categoriatransacao", 
+                      "id_subcategoria", "dsc_subcategoriatransacao", "id_usuario", "dsc_nomeusuario",
+                      "dsc_transacao", "vl_transacao", "cd_quempagou", "cd_edividido", "cd_foidividido") # MANTÉM NOME DA COLUNA SQL
             
-            inserir_dados(tabela="stg_Transacoes", dados=dados, campos=campos)
+            inserir_dados(tabela="stg_transacoes", dados=dados, campos=campos)
         else:
             st.warning("Verifique se o Valor, Descrição e Categorias/Subcategorias válidas foram selecionadas.")
 
     st.subheader("Transações em Staging")
-    df_stg = consultar_dados("stg_Transacoes", usar_view=False)
+    df_stg = consultar_dados("stg_transacoes", usar_view=False)
     st.dataframe(df_stg, use_container_width=True)
 
 def exibir_detalhe_rateio():
     st.header("Análise de Acerto de Contas")
     
     # -------------------------------------------------------------
-    # 1. TABELA RESUMO TOTAL: Quem Deve e o Valor (vw_AcertoTotal)
+    # 1. TABELA RESUMO TOTAL: Quem Deve e o Valor (vw_acertototal)
     # -------------------------------------------------------------
     st.subheader("Saldo Total Pendente")
 
-    df_total = consultar_dados("vw_AcertoTotal")
+    df_total = consultar_dados("vw_acertototal")
 
     if df_total.empty:
         st.info("Nenhuma transação para rateio pendente.")
@@ -806,8 +822,8 @@ def exibir_detalhe_rateio():
 
     # Renomeação do Resumo Total
     df_total.rename(columns={
-        'NomeUsuario': 'Usuário',
-        'VL_SaldoTotal': 'Saldo Total'
+        'nomeusuario': 'Usuário',
+        'vl_saldototal': 'Saldo Total'
     }, inplace=True)
     
     # Função de estilo (reutilizando a lógica de cor)
@@ -830,10 +846,10 @@ def exibir_detalhe_rateio():
     st.markdown("---")
 
     # ----------------------------------------------------------------------
-    # 2. TABELA CONSOLIDADO MENSAL (vw_AcertoMensal)
+    # 2. TABELA CONSOLIDADO MENSAL (vw_acertomensal)
     # ----------------------------------------------------------------------
     st.subheader("Saldo Consolidado Mensal")
-    df_resumo = consultar_dados("vw_AcertoMensal")
+    df_resumo = consultar_dados("vw_acertomensal")
 
     if df_resumo.empty:
         st.info("Nenhuma transação para rateio pendente. Cadastre uma transação dividida ou marque as transações antigas como saldadas.")
@@ -841,8 +857,8 @@ def exibir_detalhe_rateio():
 
     # Renomeação do Resumo
     df_resumo.rename(columns={
-        'CD_QuemDeve': 'Usuário',
-        'VL_SaldoAcertoMensal': 'Saldo Líquido'
+        'cd_quemdeve': 'Usuário',
+        'vl_saldoacertomensal': 'Saldo Líquido'
     }, inplace=True)
     
     # Função de estilo para o Resumo (CORRIGIDO A SINTAXE E ESPERA O VALOR NUMÉRICO)
@@ -877,18 +893,18 @@ def exibir_detalhe_rateio():
     # ----------------------------------------------------------------------
     st.subheader("Detalhe das Transações Pendentes de Acerto")
     
-    # Usando o nome da View que você indicou: vw_AcertoDetalhe
-    df_detalhe = consultar_dados("vw_AcertoDetalhe") 
+    # Usando o nome da View que você indicou: vw_acertodetalhe
+    df_detalhe = consultar_dados("vw_acertodetalhe") 
 
     # Renomeação do Detalhe
     df_detalhe.rename(columns={
-        'DT_DataTransacao': 'Data',
-        'DSC_Transacao': 'Descrição',
-        'VL_TotalTransacao': 'Total da Transação',
-        'CD_QuemPagou': 'Pagador',
-        'CD_QuemDeve': 'Usuário',
-        'VL_Proporcional': 'Devido (Parte Dele)',
-        'VL_AcertoTransacao': 'Acerto Líquido'
+        'dt_datatransacao': 'Data',
+        'dsc_transacao': 'Descrição',
+        'vl_totaltransacao': 'Total da Transação',
+        'cd_quempagou': 'Pagador',
+        'cd_quemdeve': 'Usuário',
+        'vl_proporcional': 'Devido (Parte Dele)',
+        'vl_acertotransacao': 'Acerto Líquido'
     }, inplace=True)
     
     # Função de estilo para o Detalhe
@@ -918,91 +934,123 @@ def exibir_detalhe_rateio():
     )
 
 def buscar_transacao_por_id(id_transacao):
-    conn = get_connection() # Assuma que get_connection() retorna a conexão pyodbc
-    cursor = conn.cursor()
+    conn = None
+    transacao = None
     
-    # Query para selecionar todos os campos da transação
-    query = """
-    SELECT 
-        ID_Transacao, DT_DataTransacao, DSC_TipoTransacao, DSC_CategoriaTransacao, 
-        DSC_SubcategoriaTransacao, VL_Transacao, DSC_Transacao, CD_QuemPagou, 
-        CD_EDividido, CD_FoiDividido
-    FROM 
-        stg_Transacoes 
-    WHERE 
-        ID_Transacao = ?
+    # 1. Tabela stg_transacoes em minúsculo
+    tabela = 'stg_transacoes'
+    
+    # 2. Uso do placeholder %s para PostgreSQL
+    sql_query = f"""
+        SELECT * FROM {tabela} 
+        WHERE id_transacao = %s
     """
     
     try:
-        cursor.execute(query, id_transacao)
-        # Busca o primeiro (e único) resultado
-        row = cursor.fetchone()
+        conn = get_connection()
+        cursor = conn.cursor()
         
-        if row:
-            # Converte a tupla de resultados em um dicionário para fácil acesso no Streamlit
-            columns = [column[0] for column in cursor.description]
-            return dict(zip(columns, row))
-        return None
-    except pyodbc.Error as ex:
-        st.error(f"Erro ao buscar transação: {ex}")
-        return None
-    finally:
-        cursor.close()
-        conn.close()
+        # 3. Execução: Passa a ID como uma tupla
+        cursor.execute(sql_query, (id_transacao,)) 
+        
+        # 4. Busca o primeiro (e único) resultado
+        transacao = cursor.fetchone()
+        
+    except psycopg2.Error as ex: # <<< CORREÇÃO DO DRIVER
+        st.error(f"Erro ao buscar transação por ID: {ex}")
+        
+    except Exception as e:
+        st.error(f"Erro inesperado: {e}")
 
-def atualizar_transacao_por_id(id_transacao, novo_valor, nova_data, novo_tipo, nova_categoria, 
-                               nova_subcategoria, novo_pagador, nova_descricao, 
-                               novo_e_dividido, novo_foi_dividido):
-    conn = get_connection() # Assuma que get_connection() retorna a conexão pyodbc
-    cursor = conn.cursor()
+    finally:
+        if conn:
+            conn.close()
+            
+    return transacao
+
+def atualizar_transacao_por_id(
+    id_transacao, 
+    dt_datatransacao, 
+    id_tipotransacao, 
+    dsc_tipotransacao, 
+    id_categoria, 
+    dsc_categoriatransacao, 
+    id_subcategoria, 
+    dsc_subcategoriatransacao, 
+    id_usuario, 
+    dsc_nomeusuario, 
+    dsc_transacao, 
+    vl_transacao, 
+    cd_quempagou, 
+    cd_edividido, 
+    cd_foidividido
+):
+    conn = None
     
-    # Comando SQL para atualizar os campos (Verificado com seu schema)
-    command = """
-    UPDATE stg_Transacoes SET 
-        VL_Transacao = ?, 
-        DT_DataTransacao = ?,
-        DSC_TipoTransacao = ?,
-        DSC_CategoriaTransacao = ?,
-        DSC_SubcategoriaTransacao = ?,
-        CD_QuemPagou = ?,
-        DSC_Transacao = ?,
-        CD_EDividido = ?,
-        CD_FoiDividido = ?
-        -- As colunas ID_TipoTransacao, ID_Categoria, ID_Subcategoria não são atualizadas aqui.
-        -- Se precisar atualizá-las, você precisará buscá-los antes de chamar esta função.
-    WHERE 
-        ID_Transacao = ?
+    # Tabela em minúsculo
+    tabela = 'stg_transacoes'
+    
+    # Ajuste do SQL: Nomes de colunas em minúsculo e placeholders %s
+    sql_update = f"""
+        UPDATE {tabela} SET
+            dt_datatransacao = %s,
+            id_tipotransacao = %s,
+            dsc_tipotransacao = %s,
+            id_categoria = %s,
+            dsc_categoriatransacao = %s,
+            id_subcategoria = %s,
+            dsc_subcategoriatransacao = %s,
+            id_usuario = %s,
+            dsc_nomeusuario = %s,
+            dsc_transacao = %s,
+            vl_transacao = %s,
+            cd_quempagou = %s,
+            cd_edividido = %s,
+            cd_foidividido = %s
+        WHERE id_transacao = %s; 
     """
     
-    # Os parâmetros devem ser passados na mesma ordem que os "?" no SQL
-    params = (
-        novo_valor, 
-        nova_data, 
-        novo_tipo, 
-        nova_categoria,
-        nova_subcategoria, 
-        novo_pagador,
-        nova_descricao,
-        novo_e_dividido,
-        novo_foi_dividido,
-        id_transacao  # O ID é o último parâmetro para a cláusula WHERE
+    # Tupla de Valores: Inclui todos os campos na ordem do SQL, 
+    # e o ID no final para a condição WHERE
+    valores = (
+        dt_datatransacao, 
+        id_tipotransacao, 
+        dsc_tipotransacao, 
+        id_categoria, 
+        dsc_categoriatransacao, 
+        id_subcategoria, 
+        dsc_subcategoriatransacao, 
+        id_usuario, 
+        dsc_nomeusuario, 
+        dsc_transacao, 
+        vl_transacao, 
+        cd_quempagou, 
+        cd_edividido, 
+        cd_foidividido,
+        id_transacao # <<< O valor do WHERE (o último %s)
     )
 
     try:
-        cursor.execute(command, params)
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Execução: Passa o SQL e a tupla de valores
+        cursor.execute(sql_update, valores)
         conn.commit()
+        return True
         
-        # Invalida o cache do Streamlit para que a tabela de transações seja recarregada
-        st.cache_data.clear() 
+    except psycopg2.Error as ex: # <<< CORREÇÃO DO DRIVER
+        st.error(f"Erro do banco de dados ao atualizar transação: {ex}")
+        if conn: conn.rollback()
+        return False
         
-        return True # Sucesso
-    except pyodbc.Error as ex:
-        # Exibe o erro exato do pyodbc
-        st.error(f"Erro ao atualizar transação no banco de dados: {ex}") 
-        return False # Falha
+    except Exception as e:
+        st.error(f"Erro inesperado ao atualizar transação: {e}")
+        if conn: conn.rollback()
+        return False
+
     finally:
-        cursor.close()
-        conn.close()
+        if conn: conn.close()
 
 def exibir_formulario_edicao(id_transacao):
     st.subheader(f"2. Editando Transação ID: {id_transacao}")
@@ -1016,23 +1064,23 @@ def exibir_formulario_edicao(id_transacao):
     
     # 2. BUSCAR DADOS PARA OS DROPDOWNS (DIMENSÕES)
     
-    # Usuários (dim_Usuario) - Para o dropdown "Quem Pagou"
-    df_usuarios = consultar_dados("dim_Usuario", usar_view=False)
-    usuarios_nomes = df_usuarios['DSC_Nome'].tolist() if not df_usuarios.empty and 'DSC_Nome' in df_usuarios.columns else []
+    # Usuários (dim_usuario) - Para o dropdown "Quem Pagou"
+    df_usuarios = consultar_dados("dim_usuario", usar_view=False)
+    usuarios_nomes = df_usuarios['dsc_nome'].tolist() if not df_usuarios.empty and 'dsc_nome' in df_usuarios.columns else []
     
-    # Categorias (dim_Categoria) - CORRIGIDO: USANDO DSC_CategoriaTransacao
-    df_categorias = consultar_dados("dim_Categoria", usar_view=False)
-    categorias_nomes = df_categorias['DSC_CategoriaTransacao'].tolist() if not df_categorias.empty and 'DSC_CategoriaTransacao' in df_categorias.columns else []
+    # Categorias (dim_categoria) - CORRIGIDO: USANDO dsc_categoriatransacao
+    df_categorias = consultar_dados("dim_categoria", usar_view=False)
+    categorias_nomes = df_categorias['dsc_categoriatransacao'].tolist() if not df_categorias.empty and 'dsc_categoriatransacao' in df_categorias.columns else []
 
-    # Subcategorias (dim_Subcategoria) - ASSUMINDO DSC_SubcategoriaTransacao
-    df_subcategorias = consultar_dados("dim_Subcategoria", usar_view=False)
-    subcategorias_nomes = df_subcategorias['DSC_SubcategoriaTransacao'].tolist() if not df_subcategorias.empty and 'DSC_SubcategoriaTransacao' in df_subcategorias.columns else []
+    # Subcategorias (dim_subcategoria) - ASSUMINDO dsc_subcategoriatransacao
+    df_subcategorias = consultar_dados("dim_subcategoria", usar_view=False)
+    subcategorias_nomes = df_subcategorias['dsc_subcategoriatransacao'].tolist() if not df_subcategorias.empty and 'dsc_subcategoriatransacao' in df_subcategorias.columns else []
     
     
     # 3. PREPARAR VALORES PADRÃO
     
-    # O DT_DataTransacao é retornado como objeto datetime
-    data_atual_dt = dados_atuais['DT_DataTransacao'].date() if isinstance(dados_atuais['DT_DataTransacao'], datetime.datetime) else dados_atuais['DT_DataTransacao']
+    # O dt_datatransacao é retornado como objeto datetime
+    data_atual_dt = dados_atuais['dt_datatransacao'].date() if isinstance(dados_atuais['dt_datatransacao'], datetime.datetime) else dados_atuais['dt_datatransacao']
 
     # O Tipo de Transação deve usar uma lista fixa (Receita/Despesa)
     tipos_transacao = ['Despesas', 'Receitas'] # Use a sua lista real
@@ -1048,38 +1096,38 @@ def exibir_formulario_edicao(id_transacao):
         with col2:
             novo_tipo = st.selectbox("Tipo de Transação:", 
                                      tipos_transacao, 
-                                     index=tipos_transacao.index(dados_atuais['DSC_TipoTransacao']))
+                                     index=tipos_transacao.index(dados_atuais['dsc_tipotransacao']))
 
         with col3:
-            # Usuário que Registrou (CD_QuemRegistrou é o campo que você deve ter)
-            novo_usuario_registro = st.text_input("Usuário (Quem Registrou):", value=dados_atuais.get('CD_QuemRegistrou', 'Não Informado'), disabled=True) 
+            # Usuário que Registrou (cd_quemregistrou é o campo que você deve ter)
+            novo_usuario_registro = st.text_input("Usuário (Quem Registrou):", value=dados_atuais.get('cd_quemregistrou', 'Não Informado'), disabled=True) 
 
         # LINHA 2: Categoria, Subcategoria, Valor
         col4, col5, col6 = st.columns(3)
         with col4:
             # Garante que a Categoria atual está na lista de opções (fundamental para preenchimento)
-            if dados_atuais['DSC_CategoriaTransacao'] not in categorias_nomes:
-                 categorias_nomes.append(dados_atuais['DSC_CategoriaTransacao'])
+            if dados_atuais['dsc_categoriatransacao'] not in categorias_nomes:
+                 categorias_nomes.append(dados_atuais['dsc_categoriatransacao'])
 
             nova_categoria = st.selectbox("Categoria:", 
                                           categorias_nomes, 
-                                          index=categorias_nomes.index(dados_atuais['DSC_CategoriaTransacao']))
+                                          index=categorias_nomes.index(dados_atuais['dsc_categoriatransacao']))
 
         with col5:
             # Garante que a Subcategoria atual está na lista de opções
-            if dados_atuais['DSC_SubcategoriaTransacao'] not in subcategorias_nomes:
-                 subcategorias_nomes.append(dados_atuais['DSC_SubcategoriaTransacao'])
+            if dados_atuais['dsc_subcategoriatransacao'] not in subcategorias_nomes:
+                 subcategorias_nomes.append(dados_atuais['dsc_subcategoriatransacao'])
 
             novo_subcategoria = st.selectbox("Subcategoria:", 
                                              subcategorias_nomes, 
-                                             index=subcategorias_nomes.index(dados_atuais['DSC_SubcategoriaTransacao']))
+                                             index=subcategorias_nomes.index(dados_atuais['dsc_subcategoriatransacao']))
             
         with col6:
             # CORREÇÃO CRÍTICA: Converter o valor DECIMAL (do DB) para float, para evitar o StreamlitMixedNumericTypesError
-            novo_valor = st.number_input("Valor da Transação:", value=float(dados_atuais['VL_Transacao']), min_value=0.01, format="%.2f")
+            novo_valor = st.number_input("Valor da Transação:", value=float(dados_atuais['vl_transacao']), min_value=0.01, format="%.2f")
         
         # LINHA 3: Descrição Detalhada
-        nova_descricao = st.text_area("Descrição Detalhada:", value=dados_atuais['DSC_Transacao'])
+        nova_descricao = st.text_area("Descrição Detalhada:", value=dados_atuais['dsc_transacao'])
 
         # LINHA 4: Controle de Pagamento
         st.markdown("##### Controle de Pagamento")
@@ -1087,19 +1135,19 @@ def exibir_formulario_edicao(id_transacao):
         
         with col7:
             # Quem Pagou (usa a lista de Usuários)
-            if dados_atuais['CD_QuemPagou'] not in usuarios_nomes:
-                 usuarios_nomes.append(dados_atuais['CD_QuemPagou'])
+            if dados_atuais['cd_quempagou'] not in usuarios_nomes:
+                 usuarios_nomes.append(dados_atuais['cd_quempagou'])
 
             novo_pagador = st.selectbox("Quem Pagou (Nome/Apelido):", 
                                          usuarios_nomes, 
-                                         index=usuarios_nomes.index(dados_atuais['CD_QuemPagou']))
+                                         index=usuarios_nomes.index(dados_atuais['cd_quempagou']))
 
         with col8:
             # 'S' ou 'N'
             opcoes_divisao = ('N', 'S')
             novo_e_dividido = st.radio("Essa transação será dividida?", 
                                        opcoes_divisao, 
-                                       index=opcoes_divisao.index(dados_atuais['CD_EDividido']), 
+                                       index=opcoes_divisao.index(dados_atuais['cd_edividido']), 
                                        horizontal=True)
         
         with col9:
@@ -1107,7 +1155,7 @@ def exibir_formulario_edicao(id_transacao):
             opcoes_acerto = ('N', 'S')
             novo_foi_dividido = st.radio("A transação foi acertada/saldada?", 
                                          opcoes_acerto, 
-                                         index=opcoes_acerto.index(dados_atuais['CD_FoiDividido']), 
+                                         index=opcoes_acerto.index(dados_atuais['cd_foidividido']), 
                                          horizontal=True)
 
         submitted = st.form_submit_button("Salvar Correção")
@@ -1142,7 +1190,7 @@ def editar_transacao():
     st.subheader("1. Tabela de Transações Registradas")
 
     # Consulta a tabela de transações
-    df_transacoes = consultar_dados("stg_Transacoes")
+    df_transacoes = consultar_dados("stg_transacoes")
     
     if df_transacoes.empty:
         st.info("Nenhuma transação registrada para editar.")
@@ -1150,12 +1198,12 @@ def editar_transacao():
 
     # Renomeação simplificada para o usuário escolher (Incluindo o ID)
     df_exibicao = df_transacoes.rename(columns={
-        'ID_Transacao': 'ID', # Mantenha o ID visível e em primeiro
-        'DT_DataTransacao': 'Data',
-        'DSC_Transacao': 'Descrição',
-        'VL_Transacao': 'Valor',
-        'CD_QuemPagou': 'Pagador'
-    })[['ID', 'Data', 'Descrição', 'Valor', 'Pagador', 'CD_EDividido', 'CD_FoiDividido']]
+        'id_transacao': 'ID', # Mantenha o ID visível e em primeiro
+        'dt_datatransacao': 'Data',
+        'dsc_transacao': 'Descrição',
+        'vl_transacao': 'Valor',
+        'cd_quempagou': 'Pagador'
+    })[['ID', 'Data', 'Descrição', 'Valor', 'Pagador', 'cd_edividido', 'cd_foidividido']]
 
     # Exibe a tabela COMPLETA, apenas para visualização (sem modo de seleção)
     st.dataframe(
@@ -1198,56 +1246,93 @@ def editar_transacao():
     else:
         st.info("O formulário de edição aparecerá aqui após a seleção do ID.")
 
-def deletar_registro_dimensao(tabela, id_coluna, id_valor):
-    conn = get_connection()
-    cursor = conn.cursor()
+def deletar_registro_dimensao(tabela, id_registro):
+    conn = None
     
-    # Monta o comando DELETE: DELETE FROM tabela WHERE id_coluna = ?
-    command = f"DELETE FROM {tabela} WHERE {id_coluna} = ?"
+    # 1. Garante que o nome da tabela e as colunas estão em minúsculo
+    tabela_lower = tabela.lower()
     
-    try:
-        cursor.execute(command, id_valor)
-        conn.commit()
-        st.cache_data.clear() # Limpa o cache para que as tabelas sejam recarregadas
-        return True
-    except pyodbc.Error as ex:
-        # Erro comum: foreign key violation (o registro está sendo usado em outra tabela)
-        # Código de erro '23000' é genérico para Constraint Violation
-        if '23000' in str(ex):
-             st.error(f"⚠️ Erro de Integridade: Não é possível excluir este registro. Ele está sendo usado em outra tabela (por exemplo, na tabela de Transações).")
-        else:
-             st.error(f"Erro ao excluir registro de {tabela}: {ex}")
-        return False
-    finally:
-        cursor.close()
-        conn.close()
-
-def atualizar_registro_dimensao(tabela, id_coluna, id_valor, campos_valores: dict):
-    conn = get_connection()
-    cursor = conn.cursor()
+    # Supõe que a chave primária da dimensão é 'id_' + nome_da_tabela
+    # Ex: 'dim_usuario' -> 'id_usuario'
+    id_coluna = f"id_{tabela_lower.split('_')[-1]}" 
     
-    # Monta a string de SET: "Campo1 = ?, Campo2 = ?"
-    set_clause = ", ".join([f"{campo} = ?" for campo in campos_valores.keys()])
-    
-    # Monta a lista de valores (na ordem dos campos, seguido pelo ID)
-    valores = list(campos_valores.values())
-    valores.append(id_valor)
-    
-    command = f"UPDATE {tabela} SET {set_clause} WHERE {id_coluna} = ?"
+    # 2. Uso do placeholder %s e injeção do nome da tabela (seguro) e da coluna (construída)
+    sql_delete = f"""
+        DELETE FROM {tabela_lower}
+        WHERE {id_coluna} = %s;
+    """
     
     try:
-        cursor.execute(command, valores)
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # 3. Execução: Passa o ID como uma tupla
+        cursor.execute(sql_delete, (id_registro,)) 
+        
         conn.commit()
-        st.cache_data.clear()
         return True
-    except pyodbc.Error as ex:
-        st.error(f"Erro ao atualizar registro em {tabela}: {ex}")
+        
+    except psycopg2.Error as ex: # <<< CORREÇÃO DO DRIVER
+        st.error(f"Erro do banco de dados ao deletar em {tabela_lower}: {ex}")
+        if conn: conn.rollback()
         return False
+        
+    except Exception as e:
+        st.error(f"Erro inesperado: {e}")
+        if conn: conn.rollback()
+        return False
+
     finally:
-        cursor.close()
-        conn.close()
+        if conn: conn.close()
 
+def atualizar_registro_dimensao(tabela, campos, valores, id_registro):
+    conn = None
+    
+    # 1. Garante que o nome da tabela e as colunas estão em minúsculo
+    tabela_lower = tabela.lower()
+    
+    # Supõe que a chave primária da dimensão é 'id_' + nome_da_tabela
+    # Ex: 'dim_usuario' -> 'id_usuario'
+    id_coluna = f"id_{tabela_lower.split('_')[-1]}"
+    
+    # 2. Constrói a string SET: 'campo1 = %s, campo2 = %s, ...'
+    # Converte os nomes dos campos para minúsculas para o PostgreSQL
+    set_clause = [f"{campo.lower()} = %s" for campo in campos]
+    set_clause_str = ", ".join(set_clause)
+    
+    # 3. Constrói o SQL de UPDATE
+    sql_update = f"""
+        UPDATE {tabela_lower} SET
+            {set_clause_str}
+        WHERE {id_coluna} = %s; 
+    """
+    
+    # 4. Constrói a tupla de valores: (valores_a_atualizar) + (id_registro)
+    # A tupla de valores deve ser a lista de novos valores, seguida pelo ID para o WHERE
+    valores_com_id = list(valores) + [id_registro]
 
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Execução: Passa o SQL e a tupla de valores
+        # O psycopg2 faz o bind dos %s com os valores na ordem
+        cursor.execute(sql_update, valores_com_id) 
+        conn.commit()
+        return True
+        
+    except psycopg2.Error as ex: # <<< CORREÇÃO DO DRIVER
+        st.error(f"Erro do banco de dados ao atualizar em {tabela_lower}: {ex}")
+        if conn: conn.rollback()
+        return False
+        
+    except Exception as e:
+        st.error(f"Erro inesperado: {e}")
+        if conn: conn.rollback()
+        return False
+
+    finally:
+        if conn: conn.close()
 
 if 'menu_selecionado' not in st.session_state:
     st.session_state.menu_selecionado = "Registrar Transação"

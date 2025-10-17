@@ -1,4 +1,4 @@
 streamlit
-pyodbc
+psycopg2-binary
 pandas
 datetime
