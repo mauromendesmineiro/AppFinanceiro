@@ -218,13 +218,14 @@ def formulario_categoria():
     st.header("Cadastro e Manutenção de Categorias")
 
     # 1. Busca os dados de Tipo de Transação para os dropdowns (dim_tipotransacao)
+    # NOTE: O nome da tabela é em minúsculo
     df_tipos = consultar_dados("dim_tipotransacao")
     
     if df_tipos.empty:
         st.warning("É necessário cadastrar pelo menos um Tipo de Transação (Receita/Despesa) antes de cadastrar Categorias.")
         return
         
-    # Mapeamento do Tipo (Nome -> ID)
+    # Mapeamento do Tipo (Nome -> ID). Colunas do DataFrame são lidas em minúsculo.
     tipos_dict = dict(zip(df_tipos['dsc_tipotransacao'], df_tipos['id_tipotransacao']))
     tipos_nomes = list(tipos_dict.keys())
 
@@ -248,6 +249,7 @@ def formulario_categoria():
                 id_tipo = tipos_dict[tipo_selecionado]
                 
                 # Inserção na tabela dim_categoria
+                # Nomes de tabelas e campos em minúsculo
                 inserir_dados(
                     tabela="dim_categoria",
                     dados=(id_tipo, descricao,),
@@ -269,13 +271,16 @@ def formulario_categoria():
         st.info("Nenhuma categoria registrada.")
         return
 
-    # Mapeamento baseado nos aliases da VIEW
+    # ----------------------------------------------------------------------
+    # CORREÇÃO CRÍTICA DO KEYERROR: As chaves do dicionário são em minúsculo
+    # ----------------------------------------------------------------------
     df_exibicao = df_categorias.rename(columns={
-        'ID': 'ID',                                # Coluna da View
-        'Categoria': 'Descrição',                  # Coluna da View
-        'tipodetransacao': 'Tipo Pai'            # Coluna da View
-    })[['ID', 'Descrição', 'Tipo Pai']] # <-- CORREÇÃO: REMOÇÃO DA COLUNA 'DataCriacao'
-    
+        'id': 'ID',                         # Coluna do DF: 'id' -> Exibição: 'ID'
+        'categoria': 'Descrição',           # Coluna do DF: 'categoria' -> Exibição: 'Descrição'
+        'tipodetransacao': 'Tipo Pai',      # Coluna do DF: 'tipodetransacao' -> Exibição: 'Tipo Pai'
+        'datacriacao': 'DataCriacao'        # Inclui a coluna de data (minúscula -> maiúscula)
+    })[['ID', 'Descrição', 'Tipo Pai']] 
+
     # Exibe a tabela completa para referência
     st.dataframe(df_exibicao, hide_index=True, use_container_width=True)
     
@@ -317,7 +322,7 @@ def formulario_categoria():
                 with col_edit:
                     edit_submitted = st.form_submit_button("Salvar Edição", type="secondary")
                 with col_delete:
-                     delete_clicked = st.form_submit_button("🔴 Excluir Registro", type="primary")
+                    delete_clicked = st.form_submit_button("🔴 Excluir Registro", type="primary")
 
                 if edit_submitted:
                     id_novo_tipo = tipos_dict[novo_tipo_pai]
@@ -360,6 +365,7 @@ def formulario_categoria():
         
         with col_conf_sim:
             if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_cat_sim"):
+                # O nome da tabela e da coluna ID são passados em minúsculo
                 if deletar_registro_dimensao("dim_categoria", "id_categoria", id_del):
                     st.success(f"Categoria ID {id_del} excluída com sucesso.")
                     st.session_state.confirm_delete_id_cat = None
@@ -379,7 +385,7 @@ def formulario_subcategoria():
         st.warning("É necessário cadastrar pelo menos uma Categoria antes de cadastrar Subcategorias.")
         return
         
-    # Mapeamento da Categoria (Nome -> ID)
+    # Mapeamento da Categoria (Nome -> ID).
     categorias_dict = dict(zip(df_categorias['dsc_categoriatransacao'], df_categorias['id_categoria']))
     categorias_nomes = list(categorias_dict.keys())
 
@@ -425,12 +431,13 @@ def formulario_subcategoria():
         st.info("Nenhuma subcategoria registrada.")
         return
 
-    # *** CORREÇÃO DO KEY ERROR: Usando os nomes exatos de alias da sua VIEW ***
+    # *** CORREÇÃO FINAL BASEADA NOS NOMES CONFIRMADOS: id, categoria, subcategoria ***
     df_exibicao = df_subcategorias.rename(columns={
-        'ID': 'ID',                         # Coluna da View
-        'Subcategoria': 'Descrição',        # Coluna da View
-        'Categoria': 'Categoria Pai'        # Coluna da View
-    })[['ID', 'Descrição', 'Categoria Pai']] # Seleção final corrigida
+        'id': 'ID',                         # Mapeia 'id' (minúsculo)
+        'subcategoria': 'Descrição',        # Mapeia 'subcategoria' (minúsculo)
+        'categoria': 'Categoria Pai',       # CORREÇÃO FINAL: Mapeia 'categoria' (minúsculo)
+        'datacriacao': 'DataCriacao'        # Coluna de data
+    })[['ID', 'Descrição', 'Categoria Pai']] # Seleção final usa os nomes de exibição
     
     # Exibe a tabela completa para referência
     st.dataframe(df_exibicao, hide_index=True, use_container_width=True)
@@ -473,7 +480,7 @@ def formulario_subcategoria():
                 with col_edit:
                     edit_submitted = st.form_submit_button("Salvar Edição", type="secondary")
                 with col_delete:
-                     delete_clicked = st.form_submit_button("🔴 Excluir Registro", type="primary")
+                    delete_clicked = st.form_submit_button("🔴 Excluir Registro", type="primary")
 
                 if edit_submitted:
                     id_nova_categoria = categorias_dict[novo_categoria_pai]
