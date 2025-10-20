@@ -1492,56 +1492,62 @@ def dashboard():
     
     # 1. CONSULTA DE DADOS
     try:
-        # Assumindo que você tem uma view ou tabela de fatos para transações
-        df_transacoes = consultar_dados("vw_fact_transacoes_mensal") 
+        # CRÍTICO: Consulta a tabela de staging de transações.
+        df_transacoes = consultar_dados("stg_transacoes") 
     except Exception as e:
-        st.warning(f"Não foi possível carregar os dados de transação para o Dashboard. Erro: {e}")
+        # Se a tabela também não existir, exibe este erro genérico.
+        st.warning(f"Não foi possível carregar os dados de transação para o Dashboard. Verifique se a tabela 'stg_transacoes' existe e se a conexão está OK. Erro: {e}")
         return
 
     if df_transacoes.empty:
         st.info("Nenhuma transação encontrada para gerar o dashboard.")
         return
     
-    # --- PREPARAÇÃO DOS GRÁFICOS ---
+    # --- PREPARAÇÃO DOS GRÁFICOS (Feita no Pandas) ---
     
-    # Gráfico 1: Transações por Categoria (Série Temporal)
+    # 1. Conversão da data e criação da coluna de mês/ano
+    df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
+    # Cria uma coluna de período (Ex: '2025-10') para o eixo X
+    df_transacoes['ano_mes'] = df_transacoes['dt_datatransacao'].dt.to_period('M').astype(str)
+    
+    # 2. Gráfico de Barras: Transações por Categoria (Série Temporal)
     df_agregado_mensal = df_transacoes.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
     fig1 = px.bar(
         df_agregado_mensal,
         x='ano_mes',
         y='vl_transacao',
         color='dsc_categoriatransacao',
-        title='Transações por Categoria',
+        title='Evolução Mensal das Transações por Categoria',
         labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'}
     )
-    fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)')
+    fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
     
-    # Gráfico 2: Distribuição Percentual de Despesas (Pizza)
-    # Filtrando apenas 'Despesas' se o seu DF tiver Tipos de Transação
+    # 3. Gráfico de Pizza: Distribuição Percentual de Despesas
+    # Filtragem: Somente as transações do tipo 'Despesa'
     df_despesas_totais = df_transacoes[df_transacoes['dsc_tipotransacao'] == 'Despesa']
+    
+    # Agregação para o gráfico de pizza
     df_agregado_total = df_despesas_totais.groupby('dsc_categoriatransacao')['vl_transacao'].sum().reset_index()
     
     fig2 = px.pie(
         df_agregado_total,
         values='vl_transacao',
         names='dsc_categoriatransacao',
-        title='Despesas por Categoria'
+        title='Distribuição Total de Despesas por Categoria'
     )
+    # Configura para exibir a porcentagem e o nome da fatia
     fig2.update_traces(textposition='inside', textinfo='percent+label')
     
     # -----------------------------------------------------------
-    # CRÍTICO: RENDERIZAÇÃO DE 2 GRÁFICOS POR LINHA
+    # RENDERIZAÇÃO DE 2 GRÁFICOS POR LINHA
     # -----------------------------------------------------------
     
-    # Cria a primeira linha de duas colunas
     col_grafico1, col_grafico2 = st.columns(2)
     
-    # Desenha o Gráfico 1 na coluna 1
     with col_grafico1:
         st.subheader("Evolução Mensal")
         st.plotly_chart(fig1, use_container_width=True)
 
-    # Desenha o Gráfico 2 na coluna 2
     with col_grafico2:
         st.subheader("Distribuição de Despesas")
         st.plotly_chart(fig2, use_container_width=True)
