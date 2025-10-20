@@ -1655,10 +1655,7 @@ def dashboard():
         df_transacoes_tipo = df_transacoes_tipo.rename(columns={'vl_transacao': 'Valor'})
         df_transacoes_tipo['ano_mes'] = df_transacoes_tipo['dt_datatransacao'].dt.to_period('M').astype(str)
         
-        # Filtra por 'Despesas' e 'Receita' (valores da sua tabela)
         df_transacoes_tipo = df_transacoes_tipo[df_transacoes_tipo['dsc_tipotransacao'].isin(['Receita', 'Despesas'])].copy()
-
-        # Renomear os tipos para o singular para o processamento de saldo
         df_transacoes_tipo['Tipo'] = df_transacoes_tipo['dsc_tipotransacao'].replace({'Despesas': 'Despesa', 'Receita': 'Receita'})
         
         df_transacoes_tipo = df_transacoes_tipo[['ano_mes', 'Tipo', 'Valor']]
@@ -1667,7 +1664,7 @@ def dashboard():
 
     # 2. Preparar df_salario (Receitas)
     if not df_salario.empty:
-        df_salario['dt_recebimento'] = pd.to_datetime(df_salario['dt_recebimento']) # CORREÇÃO DE KEYERROR
+        df_salario['dt_recebimento'] = pd.to_datetime(df_salario['dt_recebimento'])
         
         df_salario_agregado = df_salario.groupby(df_salario['dt_recebimento'].dt.to_period('M'))['vl_salario'].sum().reset_index()
         
@@ -1697,17 +1694,17 @@ def dashboard():
     today = datetime.date.today()
     
     # 1. VISÃO PASSADA (13 meses: OUT/2024 até o mês atual)
-    start_date_passado = today.replace(day=1) - relativedelta(months=12) # Ajuste para Out/2024
+    start_date_passado = today.replace(day=1) - relativedelta(months=12) # Inicia 13 meses atrás
     end_limit_passado = today.replace(day=1) + relativedelta(months=1) 
     
     meses_passado = [
         (today.replace(day=1) - relativedelta(months=i)).strftime('%Y-%m')
-        for i in range(12, -1, -1) # 13 meses
+        for i in range(12, -1, -1) # 13 meses (de 12 até 0)
     ]
     
     df_passado_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_passado)].copy()
     
-    # 2. VISÃO FUTURA (12 meses: Próximo mês até 11 meses depois)
+    # 2. VISÃO FUTURA (12 meses)
     start_date_futuro = today.replace(day=1) + relativedelta(months=1)
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
@@ -1722,37 +1719,18 @@ def dashboard():
     # -----------------------------------------------------------------
     # GERAÇÃO DO DATAFRAME DE SALDO (Passado e Futuro)
     # -----------------------------------------------------------------
-
-    # Função para o passado (sem projeção, usa dados brutos)
     def gerar_df_saldo(df, meses_ref):
         if df.empty:
             return pd.DataFrame()
-
-        df_pivot = df.pivot_table(
-            index='ano_mes',
-            columns='Tipo',
-            values='Valor',
-            aggfunc='sum'
-        ).fillna(0)
-        
+        df_pivot = df.pivot_table(index='ano_mes', columns='Tipo', values='Valor', aggfunc='sum').fillna(0)
         df_pivot['Receita'] = df_pivot.get('Receita', 0) + df_pivot.get('Receita (Salário)', 0)
         df_pivot['Despesa'] = df_pivot.get('Despesa', 0) 
         df_pivot['Saldo_Mensal'] = df_pivot['Receita'] - df_pivot['Despesa']
-        
         df_completo = pd.DataFrame({'ano_mes': meses_ref}).set_index('ano_mes')
         df_pivot = df_completo.join(df_pivot, how='left').fillna(0).reset_index()
-        
-        df_saldo_longo = pd.melt(
-            df_pivot,
-            id_vars=['ano_mes'],
-            value_vars=['Receita', 'Despesa', 'Saldo_Mensal'],
-            var_name='Tipo',
-            value_name='Valor'
-        )
-        
+        df_saldo_longo = pd.melt(df_pivot, id_vars=['ano_mes'], value_vars=['Receita', 'Despesa', 'Saldo_Mensal'], var_name='Tipo', value_name='Valor')
         return df_saldo_longo
     
-    # Passado (usa dados brutos)
     df_saldo_passado_final = gerar_df_saldo(df_passado_saldo, meses_ref=sorted(meses_passado))
     
     # Futuro (usa a projeção)
@@ -1768,9 +1746,6 @@ def dashboard():
     # -----------------------------------------------------------------
     col_saldo_passado, col_saldo_futuro = st.columns(2)
     
-    # -----------------------------------------------------------------
-    # GRÁFICO 3: Receitas, Despesas e Saldo (Passado) - Combinado
-    # -----------------------------------------------------------------
     with col_saldo_passado:
         st.subheader("Balanço Mensal (Passado)")
         if not df_saldo_passado_final.empty:
@@ -1782,10 +1757,6 @@ def dashboard():
         else:
             st.info("Dados de balanço insuficientes no período passado.")
 
-
-    # -----------------------------------------------------------------
-    # GRÁFICO 4: Receitas, Despesas e Saldo (Futuro) - Combinado c/ Projeção
-    # -----------------------------------------------------------------
     with col_saldo_futuro:
         st.subheader("Projeção de Balanço (Futuro)")
         if not df_saldo_futuro_final.empty:
@@ -1798,19 +1769,19 @@ def dashboard():
             st.info("Nenhuma projeção de transação disponível para o período futuro.")
 
     # -----------------------------------------------------------
-    # SEGUNDA LINHA DE GRÁFICOS (Evolução por Categoria)
+    # SEGUNDA LINHA DE GRÁFICOS (Evolução por Categoria + Acumulado)
     # -----------------------------------------------------------
     st.markdown("---") 
 
-    col_grafico1, col_grafico2 = st.columns(2)
+    # NOVO LAYOUT: 3 colunas
+    col_grafico1, col_grafico2, col_grafico5 = st.columns(3)
     
     # -----------------------------------------------------------------
-    # GRÁFICO 1: Evolução Mensal por Categoria (Passado)
+    # Gráfico 1: Evolução Mensal por Categoria (Passado) - Coluna 1
     # -----------------------------------------------------------------
     with col_grafico1:
-        st.subheader("Evolução Mensal por Categoria (Passado)")
+        st.subheader("Evolução Mensal por Categoria")
         
-        # Filtra o df_transacoes original para o período passado
         df_passado_categoria = df_transacoes[
             (df_transacoes['dt_datatransacao'].dt.date >= start_date_passado) &
             (df_transacoes['dt_datatransacao'].dt.date < end_limit_passado)
@@ -1828,7 +1799,7 @@ def dashboard():
                 x='ano_mes',
                 y='vl_transacao',
                 color='dsc_categoriatransacao',
-                title='Evolução das Transações por Categoria',
+                title='Passado (Últimos 13 Meses)',
                 labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
                 category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
                 color_discrete_sequence=PALETA_CORES 
@@ -1840,12 +1811,11 @@ def dashboard():
             st.info("Dados insuficientes nos últimos 13 meses.")
 
     # -----------------------------------------------------------------
-    # GRÁFICO 2: Transações por Categoria (Futuro)
+    # Gráfico 2: Transações por Categoria (Futuro) - Coluna 2
     # -----------------------------------------------------------------
     with col_grafico2:
-        st.subheader("Transações Agendadas por Categoria (Futuro)")
+        st.subheader("Transações Agendadas por Categoria")
         
-        # Filtra o df_transacoes original para o período futuro
         df_futuro_categoria = df_transacoes[
             (df_transacoes['dt_datatransacao'].dt.date >= start_date_futuro) &
             (df_transacoes['dt_datatransacao'].dt.date < end_date_futuro)
@@ -1863,7 +1833,7 @@ def dashboard():
                 x='ano_mes',
                 y='vl_transacao',
                 color='dsc_categoriatransacao',
-                title='Transações Futuras Registradas por Categoria',
+                title='Futuro (Próximos 12 Meses)',
                 labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
                 category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada},
                 color_discrete_sequence=PALETA_CORES 
@@ -1873,6 +1843,44 @@ def dashboard():
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Nenhuma transação agendada/registrada para o período futuro.")
+
+    # -----------------------------------------------------------------
+    # NOVO GRÁFICO 5: Acumulado por Categoria (Passado) - Coluna 3
+    # -----------------------------------------------------------------
+    with col_grafico5:
+        st.subheader("Despesas Acumuladas (Passado)")
+        
+        # Filtrar o DataFrame de Transações Apenas para DESPESAS no período PASSADO
+        df_despesas_acumuladas = df_transacoes[
+            (df_transacoes['dt_datatransacao'].dt.date >= start_date_passado) &
+            (df_transacoes['dt_datatransacao'].dt.date < end_limit_passado) &
+            (df_transacoes['dsc_tipotransacao'] == 'Despesas') # Filtrar apenas Despesas
+        ].copy()
+
+        if not df_despesas_acumuladas.empty:
+            # Agrupar e somar por Categoria
+            df_agregado_categoria = df_despesas_acumuladas.groupby('dsc_categoriatransacao')['vl_transacao'].sum().reset_index()
+            df_agregado_categoria = df_agregado_categoria.sort_values(by='vl_transacao', ascending=False)
+            
+            # Gráfico de Barras ou Torta (Barra é mais fácil de ler valores)
+            fig5 = px.bar(
+                df_agregado_categoria,
+                x='vl_transacao',
+                y='dsc_categoriatransacao',
+                orientation='h',
+                title='Despesas Totais por Categoria (Últimos 13 Meses)',
+                labels={'vl_transacao': 'Valor Acumulado', 'dsc_categoriatransacao': 'Categoria'},
+                color='dsc_categoriatransacao',
+                color_discrete_sequence=px.colors.qualitative.Dark24
+            )
+            fig5.update_layout(
+                yaxis={'categoryorder':'total ascending'}, # Ordena as barras para facilitar a leitura
+                showlegend=False
+            )
+            fig5.update_xaxes(tickformat=".2f")
+            st.plotly_chart(fig5, use_container_width=True)
+        else:
+            st.info("Nenhuma despesa registrada para o cálculo acumulado.")
 
 def main():
     # Inicializa o estado de login
