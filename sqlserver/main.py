@@ -3,6 +3,7 @@ import psycopg2
 import pandas as pd
 import datetime
 from dateutil.relativedelta import relativedelta
+import plotly.express as px
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -1486,6 +1487,127 @@ def login_page():
                     st.error("Login ou Senha incorretos.")
                     
         st.info("Acesso restrito. Credenciais necessárias para continuar.")
+
+def gerar_meses_futuros(data_inicio, n_meses):
+    datas = []
+    for i in range(n_meses):
+        datas.append(data_inicio + relativedelta(months=i))
+    return datas
+
+def dashboard():
+    st.title("📊 Dashboard Financeiro Consolidado")
+    
+    # Define o primeiro dia do Mês Atual (para base de cálculo)
+    hoje = datetime.date.today()
+    primeiro_dia_mes_atual = hoje.replace(day=1)
+    
+    # --------------------------------------------------------------------------
+    # A) VISÃO HISTÓRICA (ÚLTIMOS 12 MESES)
+    # --------------------------------------------------------------------------
+    st.subheader("Balanço Histórico Receita vs. Despesa (Últimos 12 Meses)")
+    
+    df_transacoes = consultar_dados("stg_transacoes") 
+    
+    if df_transacoes.empty:
+        st.warning("Nenhum dado de transação encontrado para exibir no Dashboard.")
+        # Continua para a Projeção, se houver dados de Salário/Recorrentes
+    else:
+        df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
+        
+        # Filtra para obter os últimos 12 meses completos (incluindo o mês atual)
+        data_limite_historico = primeiro_dia_mes_atual - relativedelta(months=11)
+        df_historico = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= data_limite_historico]
+
+        if not df_historico.empty:
+            df_historico['Ano_Mes'] = df_historico['dt_datatransacao'].dt.strftime('%Y-%m')
+            
+            # Agrupamento e Pivotagem
+            df_agrupado = df_historico.groupby(['Ano_Mes', 'dsc_tipotransacao'])['vl_transacao'].sum().reset_index()
+            df_pivot = df_agrupado.pivot_table(
+                index='Ano_Mes', 
+                columns='dsc_tipotransacao', 
+                values='vl_transacao'
+            ).fillna(0).reset_index()
+
+            # Calcular o Saldo (Despesa deve ser negativa no balanço)
+            receitas = df_pivot.get('Receita', 0)
+            despesas = df_pivot.get('Despesas', 0)
+            df_pivot['Saldo'] = receitas - despesas
+            
+            # Ordena para exibição
+            df_pivot = df_pivot.sort_values(by='Ano_Mes')
+            
+            # GRÁFICO 1: Balanço Histórico
+            fig_hist = px.bar(
+                df_pivot, 
+                x='Ano_Mes', 
+                y=['Receita', 'Despesas', 'Saldo'], 
+                title='Balanço Mensal: Histórico (Últimos 12 Meses)',
+                barmode='group',
+                height=450,
+                color_discrete_map={'Receita': 'green', 'Despesas': 'red', 'Saldo': 'blue'}
+            )
+            st.plotly_chart(fig_hist, use_container_width=True)
+        else:
+            st.info("Dados de transação insuficientes para o balanço histórico de 12 meses.")
+        
+    st.markdown("---")
+    
+    # --------------------------------------------------------------------------
+    # B) VISÃO PROJETADA (PRÓXIMOS 12 MESES)
+    # --------------------------------------------------------------------------
+    st.subheader("Balanço Projetado Receita vs. Despesa (Próximos 12 Meses)")
+
+    try:
+        # 1. Obter Salário Mais Recente (Projeção de Receita)
+        df_salario = consultar_dados("fact_salario")
+        if df_salario.empty:
+             raise ValueError("Não há salários registrados para projeção.")
+
+        ultimo_salario = df_salario.sort_values(by='dt_recebimento', ascending=False)['vl_salario'].iloc[0]
+        
+        # 2. Obter Despesas Recorrentes (Projeção de Despesa)
+        # ASSUME que existe uma tabela/view chamada vw_despesas_recorrentes
+        df_recorrentes = consultar_dados("vw_despesas_recorrentes")
+        if df_recorrentes.empty:
+            st.warning("Não há despesas recorrentes para projeção. Projetando apenas salário.")
+            total_despesa_recorrente = 0
+        else:
+            # Assumimos que esta view retorna o total das despesas recorrentes
+            total_despesa_recorrente = df_recorrentes['vl_transacao'].sum()
+        
+        # 3. Gerar Projeção
+        data_base_projecao = primeiro_dia_mes_atual + relativedelta(months=1)
+        meses_projecao = gerar_meses_futuros(data_base_projecao, 12)
+        
+        # Cria DataFrame de Projeção
+        projecao_data = []
+        for mes_data in meses_projecao:
+            projecao_data.append({
+                'Ano_Mes': mes_data.strftime('%Y-%m'),
+                'Receita': ultimo_salario,
+                'Despesas': total_despesa_recorrente,
+                'Saldo': ultimo_salario - total_despesa_recorrente
+            })
+            
+        df_projecao = pd.DataFrame(projecao_data)
+        
+        # GRÁFICO 2: Balanço Projetado
+        fig_proj = px.bar(
+            df_projecao, 
+            x='Ano_Mes', 
+            y=['Receita', 'Despesas', 'Saldo'], 
+            title='Balanço Mensal: Projeção (Próximos 12 Meses)',
+            barmode='group',
+            height=450,
+            color_discrete_map={'Receita': 'green', 'Despesas': 'red', 'Saldo': 'blue'}
+        )
+        st.plotly_chart(fig_proj, use_container_width=True)
+
+    except (ValueError, KeyError, TypeError) as e:
+        st.error(f"Erro ao calcular a projeção: {e}. Verifique se as tabelas fact_salario e vw_despesas_recorrentes estão populadas e se os nomes das colunas estão corretos.")
+        
+    st.markdown("---")
 
 def main():
     
