@@ -631,22 +631,28 @@ def formulario_salario():
         
         # 3. Renomeação das Colunas para Exibição
         df_exibicao = df_salarios.rename(columns={
+            # Colunas originais (do banco) : Novos nomes (para exibição)
             'nomeusuario': 'Usuário', 
             'vl_salario': 'Valor do Salário',
             'dsc_observacao': 'Descrição do Salário',
         })
         
-        # 4. Aplica a Formatação de Moeda
+        # 4. CRITICAL FIX: Usa os nomes RENOMEADOS na lista de seleção.
         colunas_finais = [
             "id_salario",
-            "nomeusuario",
-            "vl_salario",
+            "Usuário",                   # <-- Nome Renomeado
+            "Valor do Salário",          # <-- Nome Renomeado
             "dt_recebimento",
-            "dsc_observacao",
+            "Descrição do Salário",      # <-- Nome Renomeado
             "ano",
             "mes"
         ]
 
+        # 5. Aplica a Formatação de Moeda (Melhorar a Formatação)
+        # Vamos reordenar a formatação de moeda para garantir que ela seja aplicada.
+        # df_exibicao['Valor do Salário'] = df_exibicao['Valor do Salário'].apply(formatar_moeda) 
+        
+        # 6. Exibe o DataFrame com os nomes de colunas corretos
         st.dataframe(df_exibicao[colunas_finais], hide_index=True, use_container_width=True)
 
     else:
