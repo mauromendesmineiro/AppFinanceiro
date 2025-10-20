@@ -5,6 +5,7 @@ import datetime
 from dateutil.relativedelta import relativedelta
 import psycopg2 
 from psycopg2 import sql
+import plotly.colors as colors
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -1504,6 +1505,9 @@ def dashboard():
     # --- PRÉ-PROCESSAMENTO GERAL ---
     df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
     
+    # Define a paleta de cores a ser usada
+    PALETA_CORES = px.colors.qualitative.Plotly 
+    
     # -----------------------------------------------------------------
     # FILTRO DE TEMPO
     # -----------------------------------------------------------------
@@ -1531,10 +1535,7 @@ def dashboard():
         df_ultimos_12_meses['ano_mes'] = df_ultimos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
         df_agregado_mensal = df_ultimos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
         
-        # Ordenar os meses cronologicamente para o eixo X
         meses_ordenados = sorted(df_agregado_mensal['ano_mes'].unique())
-        
-        # Ordenar as categorias (cores) pelo valor total (para o empilhamento)
         categoria_ordenada = df_agregado_mensal.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
         
         fig1 = px.bar(
@@ -1543,26 +1544,26 @@ def dashboard():
             y='vl_transacao',
             color='dsc_categoriatransacao',
             title='Evolução das Transações por Categoria (Últimos 12 Meses)',
-            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'},
-            # Aplica a ordenação
-            category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada}
+            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
+            category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
+            color_discrete_sequence=PALETA_CORES 
         )
-        fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
+        fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Categoria')
+        
+        # CRÍTICO: Formatação do eixo Y (Valor) para 2 casas decimais sem R$
+        fig1.update_yaxes(tickformat=".2f") 
     else:
         fig1 = None
 
     # -----------------------------------------------------------------
-    # GRÁFICO 2: Evolução Mensal (Próximos 12 Meses) - NOVO GRÁFICO DE BARRAS
+    # GRÁFICO 2: Evolução Mensal (Próximos 12 Meses)
     # -----------------------------------------------------------------
     
     if not df_proximos_12_meses.empty:
         df_proximos_12_meses['ano_mes'] = df_proximos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
         df_agregado_futuro = df_proximos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
         
-        # Ordenar os meses cronologicamente para o eixo X
         meses_futuros_ordenados = sorted(df_agregado_futuro['ano_mes'].unique())
-        
-        # Ordenar as categorias (cores) pelo valor total (para o empilhamento)
         categoria_futura_ordenada = df_agregado_futuro.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
         
         fig2 = px.bar(
@@ -1571,11 +1572,14 @@ def dashboard():
             y='vl_transacao',
             color='dsc_categoriatransacao',
             title='Transações Futuras Registradas por Categoria (Próximos 12 Meses)',
-            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'},
-            # Aplica a ordenação
-            category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada}
+            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
+            category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada},
+            color_discrete_sequence=PALETA_CORES 
         )
-        fig2.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
+        fig2.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Categoria')
+        
+        # CRÍTICO: Formatação do eixo Y (Valor) para 2 casas decimais sem R$
+        fig2.update_yaxes(tickformat=".2f")
     else:
         fig2 = None
 
