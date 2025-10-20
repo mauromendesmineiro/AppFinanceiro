@@ -638,12 +638,13 @@ def formulario_salario():
         
         # 4. Aplica a Formatação de Moeda
         colunas_finais = [
-            "nomeusuario",      # Antigo: "NomeUsuario"
-            "vl_salario",       # Antigo: "VL_Salario"
-            "dt_recebimento",   # Antigo: "Dt_Recebimento"
-            "ano",              # Antigo: "Ano"
-            "mes",              # Antigo: "Mes"
-            "dsc_observacao"    # Antigo: "Dsc_Observacao"
+            "id_salario",
+            "nomeusuario",
+            "vl_salario",
+            "dt_recebimento",
+            "dsc_observacao",
+            "ano",
+            "mes"
         ]
 
         st.dataframe(df_exibicao[colunas_finais], hide_index=True, use_container_width=True)
