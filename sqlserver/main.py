@@ -1582,9 +1582,11 @@ def dashboard():
         
         # Filtra transações apenas do MÊS ANTERIOR, apenas DESPESAS
         df_recorrentes_base = df_transacoes[
-            # ... (condições de filtro) ...
+            (df_transacoes['dt_datatransacao'].dt.date >= primeiro_dia_mes_anterior) &
+            (df_transacoes['dt_datatransacao'].dt.date <= ultimo_dia_mes_anterior) &
+            (df_transacoes['dsc_tipotransacao'] == 'Despesas')
         ]
-        
+                
         if df_recorrentes_base.empty:
             st.warning(f"Não há despesas registradas no mês de {primeiro_dia_mes_anterior.strftime('%m/%Y')} para projeção. Projetando apenas salário.")
             total_despesa_recorrente = 0
