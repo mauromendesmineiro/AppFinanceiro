@@ -1706,44 +1706,50 @@ def dashboard():
     st.markdown("---")
 
 def main():
-    # Inicializa o estado da sessão, se necessário
+    # Inicializa o estado da sessão
     if 'menu_selecionado' not in st.session_state:
         st.session_state.menu_selecionado = "Dashboard"
 
     # --- 1. SIDEBAR (Menu Principal) ---
     with st.sidebar:
-        # Seção principal do Menu
         st.title("Menu Principal")
         
-        # Opções principais (Dashboard, Transação, Acerto de Contas)
-        # Usamos 3 colunas para acomodar os 3 itens principais
-        col_dash, col_trans, col_acerto = st.columns(3) 
+        # -----------------------------------------------------------------
+        # 💡 NOVO LAYOUT: 2 BLOCOS POR LINHA
+        # -----------------------------------------------------------------
+        
+        # PRIMEIRA LINHA: Dashboard e Transação
+        col1, col2 = st.columns(2) 
 
-        with col_dash:
+        with col1:
             if st.button("📊 Dashboard", key="btn_dashboard", use_container_width=True):
                 st.session_state.menu_selecionado = "Dashboard"
-        with col_trans:
+        with col2:
             if st.button("💵 Transação", key="btn_transacao", use_container_width=True):
                 st.session_state.menu_selecionado = "Transação"
-        # 💡 NOVO BOTÃO/VISIBILIDADE AQUI:
-        with col_acerto:
+
+        # SEGUNDA LINHA: Acerto de Contas e Corrigir Transação
+        col3, col4 = st.columns(2)
+        
+        with col3:
             if st.button("💰 Acerto", key="btn_acerto", use_container_width=True):
-                st.session_state.menu_selecionado = "Acerto de Contas" # NOME CORRETO DA OPÇÃO
+                st.session_state.menu_selecionado = "Acerto de Contas"
+        with col4:
+            if st.button("🛠️ Corrigir Transação", key="btn_corrigir", use_container_width=True):
+                st.session_state.menu_selecionado = "Corrigir Transação"
 
-        # Botão para Corrigir Transação (Pode ir em uma seção separada)
-        if st.button("🛠️ Corrigir Transação", key="btn_corrigir"):
-            st.session_state.menu_selecionado = "Corrigir Transação"
-
-
+        # -----------------------------------------------------------------
+        # SEÇÃO DE CADASTROS (Permanecem em coluna única)
+        # -----------------------------------------------------------------
         st.subheader("Cadastros (Dimensões)")
         
-        # Opções de cadastro (dimensões)
+        # Opções de cadastro (dimensões) - Mantenha a lógica de loop aqui
         opcoes_cadastro = {
-            "Tipos de Transação": formulario_tipo_transacao,
-            "Categorias": formulario_categoria,
-            "Subcategorias": formulario_subcategoria,
-            "Usuários": formulario_usuario,
-            "Salário": formulario_salario,
+            "Tipos de Transação": None, # Apenas para o nome do botão, a função será chamada no bloco final
+            "Categorias": None,
+            "Subcategorias": None,
+            "Usuários": None,
+            "Salário": None,
         }
         
         for nome_opcao, _ in opcoes_cadastro.items():
@@ -1753,7 +1759,7 @@ def main():
         # Botão para limpar cache (Útil)
         st.markdown("---")
         if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados):
-             pass 
+             pass
 
     # --- 2. EXIBIÇÃO DO FORMULÁRIO SELECIONADO ---
     opcao_atual = st.session_state.menu_selecionado
