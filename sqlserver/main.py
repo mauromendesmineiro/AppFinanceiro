@@ -1848,39 +1848,42 @@ def dashboard():
     # NOVO GRÁFICO 5: Acumulado por Categoria (Passado) - Coluna 3
     # -----------------------------------------------------------------
     with col_grafico5:
-        st.subheader("Despesas Acumuladas (Passado)")
+        st.subheader("Despesas Acumuladas por Ano")
         
-        # Filtrar o DataFrame de Transações Apenas para DESPESAS no período PASSADO
-        df_despesas_acumuladas = df_transacoes[
-            (df_transacoes['dt_datatransacao'].dt.date >= start_date_passado) &
-            (df_transacoes['dt_datatransacao'].dt.date < end_limit_passado) &
-            (df_transacoes['dsc_tipotransacao'] == 'Despesas') # Filtrar apenas Despesas
+        # Filtrar o DataFrame de Transações Apenas para DESPESAS
+        df_despesas_acumuladas_anual = df_transacoes[
+            df_transacoes['dsc_tipotransacao'] == 'Despesas'
         ].copy()
-
-        if not df_despesas_acumuladas.empty:
-            # Agrupar e somar por Categoria
-            df_agregado_categoria = df_despesas_acumuladas.groupby('dsc_categoriatransacao')['vl_transacao'].sum().reset_index()
-            df_agregado_categoria = df_agregado_categoria.sort_values(by='vl_transacao', ascending=False)
+        
+        if not df_despesas_acumuladas_anual.empty:
+            # 1. Extrair o Ano da transação
+            df_despesas_acumuladas_anual['Ano'] = df_despesas_acumuladas_anual['dt_datatransacao'].dt.year
             
-            # Gráfico de Barras ou Torta (Barra é mais fácil de ler valores)
+            # 2. Agrupar e somar por Ano e Categoria
+            df_agregado_anual = df_despesas_acumuladas_anual.groupby(['Ano', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
+            df_agregado_anual['Ano'] = df_agregado_anual['Ano'].astype(str) # Converter para string para o eixo X categórico
+            
+            # 3. Gráfico de Barras Empilhadas
             fig5 = px.bar(
-                df_agregado_categoria,
-                x='vl_transacao',
-                y='dsc_categoriatransacao',
-                orientation='h',
-                title='Despesas Totais por Categoria (Últimos 13 Meses)',
-                labels={'vl_transacao': 'Valor Acumulado', 'dsc_categoriatransacao': 'Categoria'},
+                df_agregado_anual,
+                x='Ano',
+                y='vl_transacao',
                 color='dsc_categoriatransacao',
+                barmode='stack', # Para empilhar as categorias dentro da barra do ano
+                title='Distribuição de Despesas por Categoria (Acumulado Anual)',
+                labels={'vl_transacao': 'Valor Acumulado (R$)', 'dsc_categoriatransacao': 'Categoria'},
                 color_discrete_sequence=px.colors.qualitative.Dark24
             )
+            
             fig5.update_layout(
-                yaxis={'categoryorder':'total ascending'}, # Ordena as barras para facilitar a leitura
-                showlegend=False
+                xaxis_title='Ano', 
+                yaxis_title='Valor Acumulado',
+                legend_title='Categoria'
             )
-            fig5.update_xaxes(tickformat=".2f")
+            fig5.update_yaxes(tickformat=".2f")
             st.plotly_chart(fig5, use_container_width=True)
         else:
-            st.info("Nenhuma despesa registrada para o cálculo acumulado.")
+            st.info("Nenhuma despesa registrada para o cálculo acumulado por ano.")
 
 def main():
     # Inicializa o estado de login
