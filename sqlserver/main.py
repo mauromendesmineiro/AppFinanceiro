@@ -1530,10 +1530,14 @@ def dashboard():
             ).fillna(0).reset_index()
 
             # Calcular o Saldo (Despesa deve ser negativa no balanço)
-            receitas = df_pivot.get('Receita', 0)
-            despesas = df_pivot.get('Despesas', 0)
-            df_pivot['Saldo'] = receitas - despesas
+            if 'Receita' not in df_pivot.columns:
+                df_pivot['Receita'] = 0.0
+            if 'Despesas' not in df_pivot.columns:
+                df_pivot['Despesas'] = 0.0
             
+            # Calcular o Saldo (agora as colunas existem e são numéricas)
+            df_pivot['Saldo'] = df_pivot['Receita'] - df_pivot['Despesas']
+
             # Ordena para exibição
             df_pivot = df_pivot.sort_values(by='Ano_Mes')
             
