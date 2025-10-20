@@ -1795,7 +1795,7 @@ def main():
         formulario_subcategoria()
     elif opcao_atual == "Usuários":
         formulario_usuario()
-    
+
 # ESTE BLOCO É O MAIS CRÍTICO: CHAMA A FUNÇÃO main() PARA INICIAR O APP
 if __name__ == "__main__":
     main()
