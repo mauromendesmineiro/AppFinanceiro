@@ -1492,50 +1492,67 @@ def dashboard():
     
     # 1. CONSULTA DE DADOS
     try:
-        # CRÍTICO: Consulta a tabela de staging de transações.
         df_transacoes = consultar_dados("stg_transacoes") 
     except Exception as e:
-        # Se a tabela também não existir, exibe este erro genérico.
-        st.warning(f"Não foi possível carregar os dados de transação para o Dashboard. Verifique se a tabela 'stg_transacoes' existe e se a conexão está OK. Erro: {e}")
+        st.warning(f"Não foi possível carregar os dados de transação. Verifique a tabela 'stg_transacoes' e a conexão. Erro: {e}")
         return
 
     if df_transacoes.empty:
         st.info("Nenhuma transação encontrada para gerar o dashboard.")
         return
     
-    # --- PREPARAÇÃO DOS GRÁFICOS (Feita no Pandas) ---
+    # --- PRÉ-PROCESSAMENTO GERAL ---
     
-    # 1. Conversão da data e criação da coluna de mês/ano
+    # Conversão da data para o tipo datetime
     df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
-    # Cria uma coluna de período (Ex: '2025-10') para o eixo X
-    df_transacoes['ano_mes'] = df_transacoes['dt_datatransacao'].dt.to_period('M').astype(str)
     
-    # 2. Gráfico de Barras: Transações por Categoria (Série Temporal)
-    df_agregado_mensal = df_transacoes.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
+    # -----------------------------------------------------------------
+    # CRÍTICO: FILTRO PARA ÚLTIMOS 12 MESES (Gráfico 1)
+    # -----------------------------------------------------------------
+    
+    today = datetime.date.today()
+    # Calcula a data de início: 11 meses atrás, começando no dia 1 daquele mês.
+    # Ex: Se hoje é Out/2025, a data de início é Nov/2024.
+    start_date = today.replace(day=1) - relativedelta(months=11)
+    
+    # Filtra o DataFrame para os últimos 12 meses
+    df_ultimos_12_meses = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= start_date].copy()
+    
+    if df_ultimos_12_meses.empty:
+        st.info("Nenhuma transação registrada nos últimos 12 meses para gerar o primeiro gráfico.")
+        return
+        
+    # Cria a coluna de período (Ex: '2025-10') para o eixo X
+    df_ultimos_12_meses['ano_mes'] = df_ultimos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
+    
+    # -----------------------------------------------------------------
+    # GRÁFICO 1: Evolução Mensal (Últimos 12 Meses)
+    # -----------------------------------------------------------------
+    
+    df_agregado_mensal = df_ultimos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
     fig1 = px.bar(
         df_agregado_mensal,
         x='ano_mes',
         y='vl_transacao',
         color='dsc_categoriatransacao',
-        title='Evolução Mensal das Transações por Categoria',
+        title='Evolução das Transações por Categoria (Últimos 12 Meses)',
         labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'}
     )
     fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
     
-    # 3. Gráfico de Pizza: Distribuição Percentual de Despesas
-    # Filtragem: Somente as transações do tipo 'Despesa'
+    # -----------------------------------------------------------------
+    # GRÁFICO 2: Distribuição Total de Despesas (Sem filtro de tempo)
+    # -----------------------------------------------------------------
+
     df_despesas_totais = df_transacoes[df_transacoes['dsc_tipotransacao'] == 'Despesa']
-    
-    # Agregação para o gráfico de pizza
     df_agregado_total = df_despesas_totais.groupby('dsc_categoriatransacao')['vl_transacao'].sum().reset_index()
     
     fig2 = px.pie(
         df_agregado_total,
         values='vl_transacao',
         names='dsc_categoriatransacao',
-        title='Distribuição Total de Despesas por Categoria'
+        title='Distribuição Total de Despesas por Categoria (Todo Período)'
     )
-    # Configura para exibir a porcentagem e o nome da fatia
     fig2.update_traces(textposition='inside', textinfo='percent+label')
     
     # -----------------------------------------------------------
