@@ -1448,50 +1448,46 @@ def autenticar_usuario(login, senha):
             
     return usuario_info # Retorna o dicionário com as informações do usuário ou {}
 
-def login_page():
-    """Exibe a tela de login e processa a autenticação, salvando o ID do usuário."""
+def login_page(): # <--- NOME DA FUNÇÃO CORRIGIDO PARA O SEU PADRÃO
+    st.title("Acesso ao Sistema")
     
-    # Garante que a sidebar está limpa na tela de login
-    st.sidebar.empty() 
-    
-    st.title("Acesso Restrito ao Sistema Financeiro")
-    st.markdown("---")
-    
-    # 💡 CORREÇÃO 1 (NameError): Define as colunas antes de usá-las
-    # Centraliza o formulário
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        st.subheader("Login de Usuário")
+    with st.form("login_form"):
+        login_input = st.text_input("Login (Usuário)", key="login_key")
+        senha_input = st.text_input("Senha", type="password", key="senha_key")
         
-        with st.form("login_form"):
-            login = st.text_input("Usuário (Login)", key="login_input")
-            senha = st.text_input("Senha", type="password", key="senha_input")
-            submitted = st.form_submit_button("Entrar")
-            
-            if submitted:
-                # Chama a função que verifica as credenciais
-                usuario_info = autenticar_usuario(login, senha)
+        submitted = st.form_submit_button("Entrar")
+        
+        if submitted:
+            conn = None
+            try:
+                # get_connection() deve estar definida para se conectar ao banco de dados
+                conn = get_connection() 
+                cursor = conn.cursor()
                 
-                # 💡 CORREÇÃO 2 & 3 (KeyError / AttributeError): 
-                # Checa se o dicionário não está vazio E se a chave 'id_usuario' existe
-                if usuario_info and 'id_usuario' in usuario_info:
-                    
-                    # 1. Sucesso: Atualizar estado e reran
+                # Consulta parametrizada para segurança
+                # Assumindo que 'dsc_senha' armazena a senha (texto simples ou hash, dependendo da sua DB)
+                query = sql.SQL("SELECT id_usuario, dsc_nome FROM dim_usuario WHERE dsc_login = %s AND dsc_senha = %s")
+                cursor.execute(query, (login_input, senha_input))
+                
+                user_data = cursor.fetchone()
+                
+                if user_data:
+                    # LOGIN BEM-SUCEDIDO: Configura as variáveis de sessão
                     st.session_state.logged_in = True
-                    st.session_state.nome_completo = usuario_info['nome_completo']
-                    st.session_state.login = usuario_info['login'] 
-                    
-                    # Salva o ID do usuário (necessário para registrar transações)
-                    st.session_state.id_usuario_logado = usuario_info['id_usuario'] 
-                    
+                    st.session_state.id_usuario_logado = user_data[0] # ID do usuário
+                    st.session_state.login = login_input
+                    st.session_state.nome_completo = user_data[1] # Nome completo
                     st.session_state.menu_selecionado = "Dashboard"
-                    st.rerun()
+                    st.success(f"Bem-vindo, {user_data[1]}! Acesso concedido.")
+                    st.rerun() # Reinicia a aplicação
                 else:
-                    # 2. Falha (o dicionário está vazio, ou o ID não foi retornado)
-                    st.error("Login ou Senha incorretos.")
+                    st.error("Login ou senha incorretos. Tente novamente.")
                     
-        st.info("Acesso restrito. Credenciais necessárias para continuar.")
+            except Exception as e:
+                st.error(f"Erro ao tentar conectar ou consultar o banco de dados. Verifique a conexão e as credenciais: {e}")
+            finally:
+                if conn is not None:
+                    conn.close()
 
 def gerar_meses_futuros(data_inicio, n_meses):
     """Gera uma lista de objetos datetime.date para os n meses futuros."""
@@ -1718,14 +1714,14 @@ def main():
     # CONTROLE DE FLUXO: Se não estiver logado, exibe apenas a tela de login
     # ----------------------------------------------------------------
     if not st.session_state.logged_in:
-        formulario_login()
+        login_page() # <--- CHAMADA CORRIGIDA
         return # Interrompe a execução do main() aqui
     
     # Se estiver logado, continua a execução do menu
     
     # --- 1. SIDEBAR (Menu Principal) ---
     with st.sidebar:
-        st.title("Menu Principal")
+        st.title(f"Menu Principal - Logado como: {st.session_state.login}")
         
         # Opções principais (Dashboard, Transação, Acerto de Contas, Corrigir Transação)
         # PRIMEIRA LINHA: Dashboard e Transação
