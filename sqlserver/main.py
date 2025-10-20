@@ -687,7 +687,7 @@ def formulario_transacao():
     tipos_map = dict(zip(df_tipos['dsc_tipotransacao'], df_tipos['id_tipotransacao']))
     
     # Criado apenas para o campo 'Quem Pagou'
-    usuarios_nomes = df_usuarios['dsc_nomeusuario'].tolist()
+    usuarios_nomes = df_usuarios['dsc_nome'].tolist()
     
     tipos_nomes = list(tipos_map.keys())
     
