@@ -1367,40 +1367,58 @@ if 'menu_selecionado' not in st.session_state:
     st.session_state.menu_selecionado = "Registrar Transação"
 
 def autenticar_usuario(login, senha):
-    """Verifica se o login e a senha correspondem a um registro em dim_usuario."""
+    """
+    Verifica se o login e a senha correspondem a um registro em dim_usuario.
+    Retorna id_usuario, nome_completo e login em caso de sucesso.
+    """
     conn = None
     usuario_info = {}
     try:
+        # A função get_connection() deve estar definida em outro lugar do seu main.py
         conn = get_connection()
         cursor = conn.cursor()
         
-        # 1. CORREÇÃO DA QUERY: Selecionar ID, Nome e Login
-        # Assumindo que o nome da coluna no banco é 'id_usuario'
+        # 💡 CORREÇÃO DA QUERY: Seleciona id_usuario, dsc_nome e login.
+        # A ordem da seleção deve ser refletida no mapeamento abaixo.
         sql = "SELECT id_usuario, dsc_nome, login FROM dim_usuario WHERE login = %s AND senha = %s;"
+        
+        # O placeholder %s é apropriado para PostgreSQL/Psycopg2 ou MySQL/MySQL Connector.
         cursor.execute(sql, (login, senha))
         
         resultado = cursor.fetchone() 
         
         if resultado:
-            # 2. CORREÇÃO DO MAPEAMENTO: Mapear o ID na posição 0 do resultado
-            # Ordem esperada: (id_usuario, dsc_nome, login)
-            usuario_info['id_usuario'] = resultado[0]      # <-- ID (posição 0)
-            usuario_info['nome_completo'] = resultado[1]   # dsc_nome (posição 1)
-            usuario_info['login'] = resultado[2]           # login (posição 2)
+            # 💡 MAPEAMENTO CORRETO: Posições do resultado da query
+            # resultado[0] -> id_usuario
+            # resultado[1] -> dsc_nome
+            # resultado[2] -> login
+            usuario_info['id_usuario'] = resultado[0]      # ID (chave que faltava)
+            usuario_info['nome_completo'] = resultado[1]   # dsc_nome
+            usuario_info['login'] = resultado[2]           # login
             
     except Exception as e:
-        # Se houver erro de conexão ou de SQL, o dicionário fica vazio.
+        # Erro de conexão/autenticação
         st.error("Ocorreu um erro na autenticação. Verifique a conexão com o banco de dados e as credenciais.")
         print(f"Erro de autenticação: {e}")
-        usuario_info = {}
+        usuario_info = {} # Garante que retorne um dicionário vazio em caso de falha
     finally:
         if conn:
             conn.close()
             
-    return usuario_info
+    return usuario_info # Retorna o dicionário com as informações do usuário ou {}
 
 def login_page():
-    # ... (código de setup) ...
+    """Exibe a tela de login e processa a autenticação, salvando o ID do usuário."""
+    
+    # Garante que a sidebar está limpa na tela de login
+    st.sidebar.empty() 
+    
+    st.title("Acesso Restrito ao Sistema Financeiro")
+    st.markdown("---")
+    
+    # 💡 CORREÇÃO 1 (NameError): Define as colunas antes de usá-las
+    # Centraliza o formulário
+    col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
         st.subheader("Login de Usuário")
@@ -1411,22 +1429,25 @@ def login_page():
             submitted = st.form_submit_button("Entrar")
             
             if submitted:
+                # Chama a função que verifica as credenciais
                 usuario_info = autenticar_usuario(login, senha)
                 
-                # 💡 O FLUXO CORRETO DEVE SER ESTE:
-                # 1. Verifica se o dicionário não está vazio E se a chave 'id_usuario' existe
+                # 💡 CORREÇÃO 2 & 3 (KeyError / AttributeError): 
+                # Checa se o dicionário não está vazio E se a chave 'id_usuario' existe
                 if usuario_info and 'id_usuario' in usuario_info:
                     
+                    # 1. Sucesso: Atualizar estado e reran
                     st.session_state.logged_in = True
                     st.session_state.nome_completo = usuario_info['nome_completo']
-                    st.session_state.login = usuario_info['login']
-                    st.session_state.id_usuario_logado = usuario_info['id_usuario'] # Acesso Seguro
+                    st.session_state.login = usuario_info['login'] 
+                    
+                    # Salva o ID do usuário (necessário para registrar transações)
+                    st.session_state.id_usuario_logado = usuario_info['id_usuario'] 
+                    
                     st.session_state.menu_selecionado = "Dashboard"
-                    
-                    st.rerun() 
-                    
+                    st.rerun()
                 else:
-                    # 2. Falha (o dicionário está vazio OU faltou o ID)
+                    # 2. Falha (o dicionário está vazio, ou o ID não foi retornado)
                     st.error("Login ou Senha incorretos.")
                     
         st.info("Acesso restrito. Credenciais necessárias para continuar.")
