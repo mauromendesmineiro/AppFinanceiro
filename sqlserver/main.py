@@ -1513,13 +1513,25 @@ def dashboard():
     # -----------------------------------------------------------------
     today = datetime.date.today()
     
-    # 1. VISÃO PASSADA (13 meses: do 1º dia do mês 12 meses atrás até hoje) - Para fig1
-    # Se hoje é Out/2025, queremos começar em Out/2024. Subtraímos 12 meses.
-    start_date_passado = today.replace(day=1) - relativedelta(months=12)
+    # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025, INCLUSIVE) - Para fig1
+    # Se hoje é Out/2025, subtraímos 11 meses do dia 1 para obter Nov/2024.
+    # Se o mês atual da transação for Nov/2025, ele será incluído se a data de início for anterior.
+    
+    # Vamos usar uma abordagem mais robusta, garantindo que a data de início seja o mês que você quer (Nov 2024)
+    # Supondo que today = 2025-10-20 (Outubro 2025)
+    
+    # Data de Início: 1 de Novembro do ano passado (para o seu exemplo, 2024)
+    start_date_passado = today.replace(day=1) - relativedelta(months=11)
+    
+    # Se today é Out/2025: 1 Out 2025 - 11 meses = 1 Nov 2024.
     df_ultimos_12_meses = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= start_date_passado].copy()
     
-    # 2. VISÃO FUTURA (Próximos 12 meses, excluindo o mês atual) - Para fig2
+    # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026, EXCLUINDO o mês atual) - Para fig2
+    
+    # Data de Início: 1 de Dezembro de 2025 (próximo mês após o atual)
     start_date_futuro = today.replace(day=1) + relativedelta(months=1)
+    
+    # Data de Fim: 12 meses após a data de início (Dez/2026), para usar o filtro "<"
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
     df_proximos_12_meses = df_transacoes[
@@ -1529,7 +1541,7 @@ def dashboard():
 
 
     # -----------------------------------------------------------------
-    # GRÁFICO 1: Evolução Mensal (Últimos 13 Meses)
+    # GRÁFICO 1: Evolução Mensal (NOV/2024 até Mês Atual)
     # -----------------------------------------------------------------
     
     if not df_ultimos_12_meses.empty:
@@ -1544,7 +1556,7 @@ def dashboard():
             x='ano_mes',
             y='vl_transacao',
             color='dsc_categoriatransacao',
-            title='Evolução das Transações por Categoria (Últimos 13 Meses)',
+            title='Evolução das Transações por Categoria (Novembro/2024 até Hoje)',
             labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
             category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
             color_discrete_sequence=PALETA_CORES 
@@ -1555,7 +1567,7 @@ def dashboard():
         fig1 = None
 
     # -----------------------------------------------------------------
-    # GRÁFICO 2: Evolução Mensal (Próximos 12 Meses)
+    # GRÁFICO 2: Evolução Mensal (Próximos 12 Meses, Excluindo o Mês Atual)
     # -----------------------------------------------------------------
     
     if not df_proximos_12_meses.empty:
@@ -1570,7 +1582,7 @@ def dashboard():
             x='ano_mes',
             y='vl_transacao',
             color='dsc_categoriatransacao',
-            title='Transações Futuras Registradas por Categoria (Próximos 12 Meses)',
+            title='Transações Futuras Registradas por Categoria (12 Meses a Partir do Próximo)',
             labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
             category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada},
             color_discrete_sequence=PALETA_CORES 
@@ -1591,14 +1603,14 @@ def dashboard():
         if fig1:
             st.plotly_chart(fig1, use_container_width=True)
         else:
-            st.info("Dados insuficientes nos últimos 13 meses.")
+            st.info("Dados insuficientes no período de 13 meses.")
 
     with col_grafico2:
         st.subheader("Transações Agendadas (Futuro)")
         if fig2:
             st.plotly_chart(fig2, use_container_width=True)
         else:
-            st.info("Nenhuma transação agendada/registrada para os próximos 12 meses.")
+            st.info("Nenhuma transação agendada/registrada para o período futuro.")
 
 def main():
     # Inicializa o estado de login
