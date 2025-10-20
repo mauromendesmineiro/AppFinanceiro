@@ -1492,7 +1492,6 @@ def dashboard():
     
     # 1. CONSULTA DE DADOS
     try:
-        # Consulta a tabela de staging de transações.
         df_transacoes = consultar_dados("stg_transacoes") 
     except Exception as e:
         st.warning(f"Não foi possível carregar os dados de transação. Verifique a tabela 'stg_transacoes' e a conexão. Erro: {e}")
@@ -1503,8 +1502,6 @@ def dashboard():
         return
     
     # --- PRÉ-PROCESSAMENTO GERAL ---
-    
-    # Conversão da data para o tipo datetime
     df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
     
     # -----------------------------------------------------------------
@@ -1517,8 +1514,7 @@ def dashboard():
     df_ultimos_12_meses = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= start_date_passado].copy()
     
     # 2. VISÃO FUTURA (Próximos 12 meses, excluindo o mês atual) - Para fig2
-    start_date_futuro = today.replace(day=1) + relativedelta(months=1) # Começa no dia 1 do próximo mês
-    # O filtro vai até 12 meses após o início do próximo mês
+    start_date_futuro = today.replace(day=1) + relativedelta(months=1)
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
     df_proximos_12_meses = df_transacoes[
@@ -1535,13 +1531,21 @@ def dashboard():
         df_ultimos_12_meses['ano_mes'] = df_ultimos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
         df_agregado_mensal = df_ultimos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
         
+        # Ordenar os meses cronologicamente para o eixo X
+        meses_ordenados = sorted(df_agregado_mensal['ano_mes'].unique())
+        
+        # Ordenar as categorias (cores) pelo valor total (para o empilhamento)
+        categoria_ordenada = df_agregado_mensal.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
+        
         fig1 = px.bar(
             df_agregado_mensal,
             x='ano_mes',
             y='vl_transacao',
             color='dsc_categoriatransacao',
             title='Evolução das Transações por Categoria (Últimos 12 Meses)',
-            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'}
+            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'},
+            # Aplica a ordenação
+            category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada}
         )
         fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
     else:
@@ -1552,12 +1556,14 @@ def dashboard():
     # -----------------------------------------------------------------
     
     if not df_proximos_12_meses.empty:
-        # Filtra apenas despesas para o gráfico de distribuição futura (se aplicável, mas aqui mostramos todas as transações futuras)
-        # Se quiser apenas Despesas: df_despesas_futuras = df_proximos_12_meses[df_proximos_12_meses['dsc_tipotransacao'] == 'Despesa']
-        
         df_proximos_12_meses['ano_mes'] = df_proximos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
-        
         df_agregado_futuro = df_proximos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
+        
+        # Ordenar os meses cronologicamente para o eixo X
+        meses_futuros_ordenados = sorted(df_agregado_futuro['ano_mes'].unique())
+        
+        # Ordenar as categorias (cores) pelo valor total (para o empilhamento)
+        categoria_futura_ordenada = df_agregado_futuro.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
         
         fig2 = px.bar(
             df_agregado_futuro,
@@ -1565,7 +1571,9 @@ def dashboard():
             y='vl_transacao',
             color='dsc_categoriatransacao',
             title='Transações Futuras Registradas por Categoria (Próximos 12 Meses)',
-            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'}
+            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'},
+            # Aplica a ordenação
+            category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada}
         )
         fig2.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
     else:
