@@ -1863,6 +1863,10 @@ def dashboard():
             df_agregado_anual = df_despesas_acumuladas_anual.groupby(['Ano', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
             df_agregado_anual['Ano'] = df_agregado_anual['Ano'].astype(str) # Converter para string para o eixo X categórico
             
+            # --- NOVO AJUSTE DE ORDENAÇÃO DE CATEGORIAS (para cores) ---
+            # Calcular a ordem das categorias pela soma total (para consistência das cores na pilha)
+            categoria_ordenada_acumulada = df_agregado_anual.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
+            
             # 3. Gráfico de Barras Empilhadas
             fig5 = px.bar(
                 df_agregado_anual,
@@ -1872,9 +1876,18 @@ def dashboard():
                 barmode='stack', # Para empilhar as categorias dentro da barra do ano
                 title='Distribuição de Despesas por Categoria (Acumulado Anual)',
                 labels={'vl_transacao': 'Valor Acumulado (R$)', 'dsc_categoriatransacao': 'Categoria'},
-                color_discrete_sequence=px.colors.qualitative.Dark24
+                # --- NOVO AJUSTE DE PALETA DE CORES ---
+                color_discrete_sequence=PALETA_CORES, 
+                # --- NOVO AJUSTE DE ORDENAÇÃO DAS CORES NA PILHA ---
+                category_orders={"dsc_categoriatransacao": categoria_ordenada_acumulada}
             )
             
+            # --- AJUSTE DE LAYOUT PARA ORDENAR AS BARRAS (ANOS) POR TOTAL ACUMULADO ---
+            # Para ordenar as barras (eixo X) decrescentemente pelo total, o Plotly exige um passo extra.
+            # No entanto, a ordenação por ano (2023, 2024, 2025) é mais comum.
+            # Se quiser ordenar DECRESCENTEMENTE o Eixo X (Ano), descomentar:
+            # fig5.update_xaxes(categoryorder='total descending') 
+
             fig5.update_layout(
                 xaxis_title='Ano', 
                 yaxis_title='Valor Acumulado',
