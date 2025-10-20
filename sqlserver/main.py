@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.express as px
 import datetime
 from dateutil.relativedelta import relativedelta
+import psycopg2 
+from psycopg2 import sql
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -26,7 +28,8 @@ def get_connection():
     return conn
 
 @st.cache_data(ttl=600)
-def consultar_dados(tabela_ou_view, usar_view=False):
+def consultar_dados(tabela_ou_view):
+    """Consulta dados de uma tabela ou view e retorna um DataFrame."""
     # Assegure-se que o nome da tabela/view esteja em minúsculo!
     tabela_ou_view = tabela_ou_view.lower() 
 
@@ -35,22 +38,23 @@ def consultar_dados(tabela_ou_view, usar_view=False):
     
     try:
         conn = get_connection()
-        sql_query = f"SELECT * FROM {tabela_ou_view}"
+        # 💡 Uso do sql.Identifier para segurança contra SQL Injection
+        sql_query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(tabela_ou_view))
         
-        # O pd.read_sql usa a conexão internamente
-        df = pd.read_sql(sql_query, conn) 
+        # O read_sql exige uma string, então montamos a query antes
+        df = pd.read_sql(sql_query.as_string(conn), conn)
         
     except psycopg2.Error as e:
-        st.error(f"Erro ao consultar dados no Neon: {e}")
-        
-    except Exception as e:
-        st.error(f"Erro inesperado ao conectar ou consultar: {e}")
+        # Exibe um erro amigável ao usuário
+        st.error(f"Erro ao conectar ou consultar o banco de dados. Detalhes: {e}")
+        # Retorna um DataFrame vazio se houver erro
+        df = pd.DataFrame() 
         
     finally:
-            # Garante que a conexão será fechada, independentemente de erro ou sucesso
-            if conn:
-                conn.close()
-                
+        # 💡 GARANTE QUE A CONEXÃO É FECHADA SEMPRE
+        if conn is not None:
+            conn.close()
+            
     return df
 
 def limpar_cache_dados():
@@ -1514,7 +1518,6 @@ def dashboard():
         return 
     
     # 1. Normaliza df_transacoes (Despesas e outras Receitas)
-    # Garante que a coluna de data exista, mesmo que df_transacoes esteja vazio
     df_trans_cols = pd.DataFrame(columns=['dt_datatransacao', 'vl_transacao', 'dsc_tipotransacao'])
     if not df_transacoes.empty:
         df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
@@ -1522,7 +1525,7 @@ def dashboard():
         df_trans_cols = df_transacoes[['dt_datatransacao', 'vl_transacao', 'dsc_tipotransacao']]
     
     
-    # 2. Normaliza df_salario (Receita principal) - CORREÇÃO DE ATRIBUIÇÃO
+    # 2. Normaliza df_salario (Receita principal)
     df_salario_norm = pd.DataFrame()
     if not df_salario.empty:
         df_salario['dt_recebimento'] = pd.to_datetime(df_salario['dt_recebimento'])

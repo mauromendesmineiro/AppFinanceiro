@@ -3,3 +3,4 @@ pandas
 plotly
 python-dateutil
 psycopg2-binary
+psycopg2
