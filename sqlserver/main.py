@@ -1500,7 +1500,7 @@ def dashboard():
         df_salario = consultar_dados("fact_salario")
         
     except Exception as e:
-        st.warning(f"Não foi possível carregar os dados de transação/salário. Erro: {e}")
+        st.warning(f"Não foi possível carregar os dados de transação/salário. Verifique as tabelas. Erro: {e}")
         return
 
     if df_transacoes.empty and df_salario.empty:
@@ -1512,36 +1512,40 @@ def dashboard():
     # 1. Preparar df_transacoes (Receitas agendadas e Despesas)
     if not df_transacoes.empty:
         df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
-        # Filtrar apenas o que é Despesa E Receita (se houver receitas agendadas fora do salário)
+        
+        # Agrupar Despesas e Receitas por data e tipo
         df_transacoes_tipo = df_transacoes.groupby(['dt_datatransacao', 'dsc_tipotransacao'])['vl_transacao'].sum().reset_index()
         df_transacoes_tipo = df_transacoes_tipo.rename(columns={'vl_transacao': 'Valor'})
-        
         df_transacoes_tipo['ano_mes'] = df_transacoes_tipo['dt_datatransacao'].dt.to_period('M').astype(str)
+        # Manter apenas Receita e Despesa na coluna Tipo
+        df_transacoes_tipo = df_transacoes_tipo[df_transacoes_tipo['dsc_tipotransacao'].isin(['Receita', 'Despesa'])].rename(columns={'dsc_tipotransacao': 'Tipo'})
     else:
-        df_transacoes_tipo = pd.DataFrame(columns=['ano_mes', 'dsc_tipotransacao', 'Valor'])
+        df_transacoes_tipo = pd.DataFrame(columns=['ano_mes', 'Tipo', 'Valor'])
 
     # 2. Preparar df_salario (Receitas)
     if not df_salario.empty:
-        df_salario['dt_salario'] = pd.to_datetime(df_salario['dt_salario'])
-        # Agrupar a soma dos salários de Mauro e Marta por mês
-        df_salario_agregado = df_salario.groupby(df_salario['dt_salario'].dt.to_period('M'))['vl_salario'].sum().reset_index()
-        df_salario_agregado['ano_mes'] = df_salario_agregado['dt_salario'].astype(str)
-        df_salario_agregado = df_salario_agregado.rename(columns={'vl_salario': 'Valor'})
-        df_salario_agregado['dsc_tipotransacao'] = 'Receita (Salário)'
+        # CORREÇÃO APLICADA: Usar a coluna 'dt_recebimento'
+        df_salario['dt_recebimento'] = pd.to_datetime(df_salario['dt_recebimento']) 
         
-        # Selecionar colunas e garantir o mesmo formato de 'df_transacoes_tipo'
-        df_salario_final = df_salario_agregado[['ano_mes', 'dsc_tipotransacao', 'Valor']].copy()
+        # Agrupar a soma dos salários por mês
+        df_salario_agregado = df_salario.groupby(df_salario['dt_recebimento'].dt.to_period('M'))['vl_salario'].sum().reset_index()
+        
+        df_salario_agregado['ano_mes'] = df_salario_agregado['dt_recebimento'].astype(str) 
+        df_salario_agregado = df_salario_agregado.rename(columns={'vl_salario': 'Valor'})
+        df_salario_agregado['Tipo'] = 'Receita (Salário)'
+        
+        df_salario_final = df_salario_agregado[['ano_mes', 'Tipo', 'Valor']].copy()
     else:
-        df_salario_final = pd.DataFrame(columns=['ano_mes', 'dsc_tipotransacao', 'Valor'])
+        df_salario_final = pd.DataFrame(columns=['ano_mes', 'Tipo', 'Valor'])
 
 
     # 3. UNIR DADOS (Salário + Transações)
     df_dados_mensais = pd.concat([
-        df_transacoes_tipo.rename(columns={'dsc_tipotransacao': 'Tipo'}),
-        df_salario_final.rename(columns={'dsc_tipotransacao': 'Tipo'})
+        df_transacoes_tipo,
+        df_salario_final
     ])
     
-    # Agrupar novamente por Mês/Ano e Tipo
+    # Agrupar novamente por Mês/Ano e Tipo para consolidar (ex: Receita da stg + Receita Salário)
     df_dados_mensais = df_dados_mensais.groupby(['ano_mes', 'Tipo'])['Valor'].sum().reset_index()
     
     
@@ -1552,27 +1556,27 @@ def dashboard():
     # -----------------------------------------------------------------
     today = datetime.date.today()
     
-    # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025, INCLUSIVE) - Para fig3
+    # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025, INCLUSIVE) - Para fig1 e fig3
     start_date_passado = today.replace(day=1) - relativedelta(months=11)
-    end_limit_passado = today.replace(day=1) + relativedelta(months=2) # 1º dia de Dezembro/2025
+    end_limit_passado = today.replace(day=1) + relativedelta(months=2) 
     
     meses_passado = [
         (today.replace(day=1) - relativedelta(months=i)).strftime('%Y-%m')
-        for i in range(11, -2, -1) # De Nov/2024 até Dez/2025 (para filtro exclusivo)
+        for i in range(11, -1, -1) # De Nov/2024 até o Mês Atual
     ]
     
-    df_passado = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_passado)].copy()
+    df_passado_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_passado)].copy()
     
-    # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026) - Para fig4
-    start_date_futuro = today.replace(day=1) + relativedelta(months=2) # 1º dia de Dezembro/2025
+    # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026) - Para fig2 e fig4
+    start_date_futuro = today.replace(day=1) + relativedelta(months=1)
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
     meses_futuro = [
         (start_date_futuro + relativedelta(months=i)).strftime('%Y-%m')
-        for i in range(12) # De Dez/2025 até Nov/2026
+        for i in range(12) 
     ]
 
-    df_futuro = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_futuro)].copy()
+    df_futuro_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_futuro)].copy()
 
 
     # -----------------------------------------------------------------
@@ -1583,7 +1587,6 @@ def dashboard():
         if df.empty:
             return pd.DataFrame()
 
-        # Cria a tabela pivot
         df_pivot = df.pivot_table(
             index='ano_mes',
             columns='Tipo',
@@ -1591,17 +1594,16 @@ def dashboard():
             aggfunc='sum'
         ).fillna(0)
         
-        # Garante que 'Despesa' e 'Receita' existam, tratando a Receita (Salário) como Receita total
+        # Soma a Receita da stg_transacoes com a Receita (Salário) da fact_salario
         df_pivot['Receita'] = df_pivot.get('Receita', 0) + df_pivot.get('Receita (Salário)', 0)
         df_pivot['Despesa'] = df_pivot.get('Despesa', 0)
         
         df_pivot['Saldo_Mensal'] = df_pivot['Receita'] - df_pivot['Despesa']
         
-        # Reindexa para garantir que todos os 13/12 meses apareçam, mesmo com valor zero
+        # Reindexa para garantir que todos os 13/12 meses apareçam
         df_completo = pd.DataFrame({'ano_mes': meses_ref}).set_index('ano_mes')
         df_pivot = df_completo.join(df_pivot, how='left').fillna(0).reset_index()
         
-        # Transforma para o formato longo para Plotly
         df_saldo_longo = pd.melt(
             df_pivot,
             id_vars=['ano_mes'],
@@ -1612,8 +1614,8 @@ def dashboard():
         
         return df_saldo_longo
     
-    df_saldo_passado = gerar_df_saldo(df_passado, meses_ref=meses_passado)
-    df_saldo_futuro = gerar_df_saldo(df_futuro, meses_ref=meses_futuro)
+    df_saldo_passado_final = gerar_df_saldo(df_passado_saldo, meses_ref=sorted(meses_passado))
+    df_saldo_futuro_final = gerar_df_saldo(df_futuro_saldo, meses_ref=sorted(meses_futuro))
 
 
     # -----------------------------------------------------------------
@@ -1626,19 +1628,18 @@ def dashboard():
     # -----------------------------------------------------------------
     with col_saldo_passado:
         st.subheader("Balanço Mensal (Passado)")
-        if not df_saldo_passado.empty:
+        if not df_saldo_passado_final.empty:
             
             fig3 = px.bar(
-                df_saldo_passado,
+                df_saldo_passado_final,
                 x='ano_mes',
                 y='Valor',
                 color='Tipo',
                 barmode='group', 
                 title='Receitas, Despesas e Saldo (Últimos 13 Meses)',
                 labels={'ano_mes': 'Mês/Ano', 'Valor': 'Valor Total'},
-                # Cores Verde (Receita), Vermelho (Despesa), Azul (Saldo)
                 color_discrete_sequence=['#4BBF7C', '#FF6347', '#4682B4'], 
-                category_orders={"ano_mes": sorted(df_saldo_passado['ano_mes'].unique())}
+                category_orders={"ano_mes": sorted(df_saldo_passado_final['ano_mes'].unique())}
             )
             fig3.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Tipo')
             fig3.update_yaxes(tickformat=".2f")
@@ -1652,10 +1653,10 @@ def dashboard():
     # -----------------------------------------------------------------
     with col_saldo_futuro:
         st.subheader("Balanço Mensal (Futuro)")
-        if not df_saldo_futuro.empty:
+        if not df_saldo_futuro_final.empty:
             
             fig4 = px.bar(
-                df_saldo_futuro,
+                df_saldo_futuro_final,
                 x='ano_mes',
                 y='Valor',
                 color='Tipo',
@@ -1663,7 +1664,7 @@ def dashboard():
                 title='Projeção de Balanço (Próximos 12 Meses)',
                 labels={'ano_mes': 'Mês/Ano', 'Valor': 'Valor Total'},
                 color_discrete_sequence=['#4BBF7C', '#FF6347', '#4682B4'],
-                category_orders={"ano_mes": sorted(df_saldo_futuro['ano_mes'].unique())}
+                category_orders={"ano_mes": sorted(df_saldo_futuro_final['ano_mes'].unique())}
             )
             fig4.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Tipo')
             fig4.update_yaxes(tickformat=".2f")
@@ -1674,7 +1675,7 @@ def dashboard():
     # -----------------------------------------------------------
     # SEGUNDA LINHA DE GRÁFICOS (Evolução por Categoria)
     # -----------------------------------------------------------
-    st.markdown("---") # Separador visual
+    st.markdown("---") 
 
     col_grafico1, col_grafico2 = st.columns(2)
     
@@ -1684,7 +1685,6 @@ def dashboard():
     with col_grafico1:
         st.subheader("Evolução Mensal por Categoria (Passado)")
         
-        # Filtra o df_transacoes original para o período passado (para categorias)
         df_passado_categoria = df_transacoes[
             (df_transacoes['dt_datatransacao'].dt.date >= start_date_passado) &
             (df_transacoes['dt_datatransacao'].dt.date < end_limit_passado)
@@ -1719,7 +1719,6 @@ def dashboard():
     with col_grafico2:
         st.subheader("Transações Agendadas por Categoria (Futuro)")
         
-        # Filtra o df_transacoes original para o período futuro (para categorias)
         df_futuro_categoria = df_transacoes[
             (df_transacoes['dt_datatransacao'].dt.date >= start_date_futuro) &
             (df_transacoes['dt_datatransacao'].dt.date < end_date_futuro)
