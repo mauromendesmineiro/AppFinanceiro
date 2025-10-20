@@ -1696,7 +1696,7 @@ def main():
         opcao_atual = st.session_state.menu_selecionado
         
         if opcao_atual == "Dashboard":
-            st.info(f"Dashboard em construção. Use o menu lateral para cadastrar dados.")
+            dashboard()
         elif opcao_atual == "Transação":
             formulario_transacao()
         elif opcao_atual == "Salário":
