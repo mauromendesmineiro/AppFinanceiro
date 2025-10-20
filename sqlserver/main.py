@@ -1448,48 +1448,51 @@ def autenticar_usuario(login, senha):
             
     return usuario_info # Retorna o dicionário com as informações do usuário ou {}
 
-def login_page(): 
-    st.title("Acesso ao Sistema")
+def login_page():
     
-    with st.form("login_form"):
-        # Usamos chaves diferentes para evitar conflito com 'login' na session_state
-        login_input = st.text_input("Login (Usuário)", key="login_input_key") 
-        senha_input = st.text_input("Senha", type="password", key="senha_input_key")
+    # CRÍTICO: Cria três colunas para centralizar o formulário
+    # [Esquerda (espaço vazio), Centro (formulário), Direita (espaço vazio)]
+    # A coluna central com o valor 0.6 garantirá que o formulário seja estreito.
+    col_vazia1, col_form, col_vazia2 = st.columns([1, 0.6, 1])
+    
+    # Tudo o que está relacionado ao login agora deve ser colocado na coluna central
+    with col_form:
+        st.title("Acesso ao Sistema")
         
-        submitted = st.form_submit_button("Entrar")
-        
-        if submitted:
-            conn = None
-            try:
-                # get_connection() deve estar definida
-                conn = get_connection() 
-                cursor = conn.cursor()
-                
-                # CORREÇÃO CRÍTICA: MUDANÇA DE dsc_login PARA login E dsc_senha PARA senha
-                query = sql.SQL("SELECT id_usuario, dsc_nome FROM dim_usuario WHERE login = %s AND senha = %s")
-                cursor.execute(query, (login_input, senha_input))
-                
-                user_data = cursor.fetchone()
-                
-                if user_data:
-                    # LOGIN BEM-SUCEDIDO: Configura as variáveis de sessão
-                    st.session_state.logged_in = True
-                    st.session_state.id_usuario_logado = user_data[0] # ID do usuário
-                    st.session_state.login = login_input
-                    st.session_state.nome_completo = user_data[1] # Nome completo
-                    st.session_state.menu_selecionado = "Dashboard"
-                    st.success(f"Bem-vindo, {user_data[1]}! Acesso concedido.")
-                    st.rerun() # Reinicia a aplicação
-                else:
-                    st.error("Login ou senha incorretos. Tente novamente.")
+        with st.form("login_form"):
+            login_input = st.text_input("Login (Usuário)", key="login_input_key") 
+            senha_input = st.text_input("Senha", type="password", key="senha_input_key")
+            
+            submitted = st.form_submit_button("Entrar", use_container_width=True)
+            
+            if submitted:
+                conn = None
+                try:
+                    conn = get_connection() 
+                    cursor = conn.cursor()
                     
-            except Exception as e:
-                # O erro de coluna (ex: column "dsc_login" does not exist) será exibido aqui.
-                # Agora que corrigimos, deve ser um erro de credenciais se não funcionar.
-                st.error(f"Erro ao tentar conectar ou consultar o banco de dados. Verifique a conexão e as credenciais: {e}")
-            finally:
-                if conn is not None:
-                    conn.close()
+                    # Consulta para obter id_usuario e dsc_nome (nome completo)
+                    query = sql.SQL("SELECT id_usuario, dsc_nome FROM dim_usuario WHERE login = %s AND senha = %s")
+                    cursor.execute(query, (login_input, senha_input))
+                    
+                    user_data = cursor.fetchone()
+                    
+                    if user_data:
+                        st.session_state.logged_in = True
+                        st.session_state.id_usuario_logado = user_data[0]
+                        st.session_state.login = login_input
+                        st.session_state.nome_completo = user_data[1] 
+                        st.session_state.menu_selecionado = "Dashboard"
+                        st.success(f"Bem-vindo, {user_data[1]}! Acesso concedido.")
+                        st.rerun()
+                    else:
+                        st.error("Login ou senha incorretos. Tente novamente.")
+                        
+                except Exception as e:
+                    st.error(f"Erro ao tentar conectar ou consultar o banco de dados. Verifique a conexão e as credenciais: {e}")
+                finally:
+                    if conn is not None:
+                        conn.close()
 
 def gerar_meses_futuros(data_inicio, n_meses):
     """Gera uma lista de objetos datetime.date para os n meses futuros."""
@@ -1716,7 +1719,6 @@ def main():
     # CONTROLE DE FLUXO: Se não estiver logado, exibe apenas a tela de login
     # ----------------------------------------------------------------
     if not st.session_state.logged_in:
-        # Nota: A função login_page() deve estar definida no seu código.
         login_page()
         return 
     
@@ -1724,13 +1726,12 @@ def main():
     
     # --- 1. SIDEBAR (Menu Principal) ---
     with st.sidebar:
-        st.title(f"Menu Principal - Logado como: {st.session_state.login}")
+        # ALTERAÇÃO 1: Usar dsc_nome (nome_completo) em vez de login
+        nome_exibido = st.session_state.get('nome_completo', st.session_state.login)
+        st.title(f"Menu Principal - Logado como: {nome_exibido}")
         
-        # -----------------------------------------------------------------
-        # BOTÕES PRINCIPAIS RESTAURADOS (Dashboard, Transação, Acerto, Corrigir)
-        # -----------------------------------------------------------------
+        # BOTÕES PRINCIPAIS (Dashboard, Transação, Acerto, Corrigir) - 2 colunas
         
-        # PRIMEIRA LINHA: Dashboard e Transação
         col1, col2 = st.columns(2) 
 
         with col1:
@@ -1740,7 +1741,6 @@ def main():
             if st.button("💵 Transação", key="btn_transacao", use_container_width=True):
                 st.session_state.menu_selecionado = "Transação"
 
-        # SEGUNDA LINHA: Acerto de Contas e Corrigir Transação
         col3, col4 = st.columns(2)
         
         with col3:
@@ -1752,44 +1752,72 @@ def main():
         
         st.subheader("Cadastros (Dimensões)")
         
-        # Opções de cadastro (dimensões) com Emojis
+        # Dicionário de Opções
         opcoes_cadastro = {
-            "💳 Tipos de Transação": None, 
-            "🏷️ Categorias": None,        
-            "📝 Subcategorias": None,     
-            "👥 Usuários": None,          
-            "💰 Salário": None,           
+            "💳 Tipos de Transação": "Tipos de Transação", 
+            "🏷️ Categorias": "Categorias",        
+            "📝 Subcategorias": "Subcategorias",     
+            "👥 Usuários": "Usuários",          
+            "💰 Salário": "Salário",
         }
         
-        for nome_opcao, _ in opcoes_cadastro.items():
-            # Cria uma chave de botão limpa (ex: 'Tipos')
-            key_limpa = nome_opcao.split()[1]
-            if st.button(nome_opcao, key=f"btn_cadastro_{key_limpa}", use_container_width=True):
-                # Armazena o nome LIMPO no estado para que o bloco de execução abaixo o encontre.
-                nome_limpo_para_funcao = nome_opcao.split(' ', 1)[1] 
-                st.session_state.menu_selecionado = nome_limpo_para_funcao
+        # ALTERAÇÃO 2: Layout de 2 botões por linha para Cadastros
+        opcoes_lista = list(opcoes_cadastro.keys())
+        
+        for i in range(0, len(opcoes_lista), 2):
+            col_a, col_b = st.columns(2)
+            
+            # Botão da coluna A
+            nome_opcao_a = opcoes_lista[i]
+            nome_limpo_a = opcoes_cadastro[nome_opcao_a] # Nome da tela para session_state
+            
+            with col_a:
+                if st.button(nome_opcao_a, key=f"btn_cadastro_{nome_limpo_a}", use_container_width=True):
+                    st.session_state.menu_selecionado = nome_limpo_a
 
+            # Botão da coluna B (se existir)
+            if i + 1 < len(opcoes_lista):
+                nome_opcao_b = opcoes_lista[i+1]
+                nome_limpo_b = opcoes_cadastro[nome_opcao_b] # Nome da tela para session_state
+                
+                with col_b:
+                    if st.button(nome_opcao_b, key=f"btn_cadastro_{nome_limpo_b}", use_container_width=True):
+                        st.session_state.menu_selecionado = nome_limpo_b
+        
         # Botões de Logout/Cache
         st.markdown("---")
-        # A função limpar_cache_dados deve estar definida
-        if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados):
+        
+        if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados, use_container_width=True):
              pass 
         
-        # Botão de Logout
-        if st.button("Sair (Logout)", key="btn_logout"):
+        # ALTERAÇÃO 3: Botão Sair (Logout) com emoji e cor vermelha
+        # Nota: Streamlit não suporta botões coloridos diretamente. Usaremos Markdown/HTML.
+        # Mas para o botão padrão, vamos usar o st.button e tentar simular a cor com o emoji.
+        
+        st.markdown(
+            """
+            <style>
+            div.stButton > button:last-child {
+                background-color: #ff4b4b; /* Cor de erro/vermelho do Streamlit */
+                color: white;
+            }
+            </style>""", unsafe_allow_html=True
+        )
+        
+        if st.button("🛑 Sair", key="btn_logout", use_container_width=True):
             st.session_state.logged_in = False
             # Limpa as variáveis de sessão sensíveis
             if 'id_usuario_logado' in st.session_state:
                  del st.session_state.id_usuario_logado
             if 'login' in st.session_state:
                  del st.session_state.login
+            if 'nome_completo' in st.session_state:
+                 del st.session_state.nome_completo
             st.rerun() 
 
     # --- 2. EXIBIÇÃO DO FORMULÁRIO SELECIONADO ---
     opcao_atual = st.session_state.menu_selecionado
     
-    # Nota: Todas as funções de formulário (dashboard, formulario_transacao, etc.)
-    # devem estar definidas no seu código.
     if opcao_atual == "Dashboard":
         dashboard()
     elif opcao_atual == "Transação":
