@@ -690,7 +690,7 @@ def formulario_transacao():
     # Presume que estas chaves estão no st.session_state (configuradas no login)
     try:
         id_usuario_logado = st.session_state.id_usuario_logado
-        login_usuario = st.session_state.login
+        login_usuario = st.session_state.dsc_nome
     except AttributeError:
         st.error("Erro de Sessão: As variáveis de usuário logado (id_usuario_logado e login) não estão configuradas na sessão.")
         return
