@@ -1787,7 +1787,7 @@ def main():
         # Botões de Logout/Cache
         st.markdown("---")
         
-        if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados, use_container_width=True):
+        if st.button("♻️ Limpar Cache", on_click=limpar_cache_dados, use_container_width=True):
              pass 
         
         # ALTERAÇÃO 3: Estilo CSS específico para o botão "🛑 Sair"
