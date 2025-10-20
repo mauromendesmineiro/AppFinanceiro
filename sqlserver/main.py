@@ -679,23 +679,23 @@ def formulario_transacao():
     st.header("Registro de Transação")
     
     # 1. CARREGAR DADOS DAS DIMENSÕES
-    # CORREÇÃO: 'usar_view=False' REMOVIDO de todas as chamadas
     df_tipos = consultar_dados("dim_tipotransacao")
     df_categorias = consultar_dados("dim_categoria")
     df_subcategorias = consultar_dados("dim_subcategoria")
     df_usuarios = consultar_dados("dim_usuario") 
 
     # --- DADOS DO USUÁRIO LOGADO (VINCULAÇÃO AUTOMÁTICA) ---
-    # Estes dados devem ser injetados na stg_transacoes
-    # Presume que estas chaves estão no st.session_state (configuradas no login)
     try:
         id_usuario_logado = st.session_state.id_usuario_logado
-        login_usuario = st.session_state.dsc_nome
+        # Usamos o nome completo (dsc_nome) para exibição e registro na tabela
+        nome_usuario = st.session_state.nome_completo # <<--- ALTERAÇÃO PRINCIPAL AQUI
+        
     except AttributeError:
-        st.error("Erro de Sessão: As variáveis de usuário logado (id_usuario_logado e login) não estão configuradas na sessão.")
+        st.error("Erro de Sessão: As variáveis de usuário logado (id_usuario_logado e nome_completo) não estão configuradas na sessão.")
         return
     
-    st.info(f"Usuário (Quem Registrou) **automaticamente** definido como: **{login_usuario}**")
+    # CRÍTICO: ALTERAÇÃO NA EXIBIÇÃO PARA USAR O NOME COMPLETO
+    st.info(f"Usuário (Quem Registrou) **automaticamente** definido como: **{nome_usuario}**")
     # --------------------------------------------------------
 
     # Validação Mínima
@@ -715,26 +715,20 @@ def formulario_transacao():
     with col1:
         data_transacao = st.date_input("Data da Transação:", datetime.date.today())
     with col2:
-        # st.selectbox: Tipo de Transação - COM CALLBACK (reset_categoria deve ser definido)
         tipo_nome = st.selectbox(
             "Tipo de Transação:", 
             tipos_nomes, 
             key="sel_tipo", 
-            # on_change=reset_categoria # Se 'reset_categoria' estiver definido globalmente
+            # on_change=reset_categoria 
         )
     
-    # ----------------------------------------
-    # LINHA 2: CATEGORIA (Filtro pelo Tipo)
-    # ----------------------------------------
-    
+    # --- LOGICA DE FILTRAGEM DE CATEGORIAS ---
     id_tipo_selecionado = tipos_map.get(tipo_nome)
-    # Garante que id_tipo_selecionado não é None
     if id_tipo_selecionado is not None:
         df_cats_filtradas = df_categorias[df_categorias['id_tipotransacao'] == id_tipo_selecionado].copy()
     else:
         df_cats_filtradas = pd.DataFrame()
-    
-    
+        
     if df_cats_filtradas.empty:
         st.warning(f"Não há Categorias cadastradas para o Tipo '{tipo_nome}'. Cadastre uma Categoria.")
         categorias_nomes = ["(Cadastre uma Categoria)"]
@@ -749,15 +743,11 @@ def formulario_transacao():
             key="sel_cat",
             index=0
         )
-    
-    # ----------------------------------------
-    # LINHA 2 CONTINUA: SUBCATEGORIA (Filtro pela Categoria)
-    # ----------------------------------------
-    
+        
+    # --- LOGICA DE FILTRAGEM DE SUBCATEGORIAS ---
     df_subs_filtradas = pd.DataFrame()
-    subcategorias_nomes = ["(Selecione uma Categoria válida)"] # Default
+    subcategorias_nomes = ["(Selecione uma Categoria válida)"]
     
-    # Lógica de Filtragem da Subcategoria
     if categoria_nome != "(Cadastre uma Categoria)" and categoria_nome in df_cats_filtradas['dsc_categoriatransacao'].values:
         
         id_categoria_selecionada = df_cats_filtradas[df_cats_filtradas['dsc_categoriatransacao'] == categoria_nome]['id_categoria'].iloc[0]
@@ -768,7 +758,6 @@ def formulario_transacao():
             subcategorias_nomes = ["(Cadastre uma Subcategoria)"]
         else:
             subcategorias_nomes = df_subs_filtradas['dsc_subcategoriatransacao'].tolist()
-
 
     with col5:
         subcategoria_nome = st.selectbox("Subcategoria:", subcategorias_nomes, key="sel_sub", index=0)
@@ -818,12 +807,11 @@ def formulario_transacao():
             
             # --- USO DOS DADOS VINCULADOS ---
             id_usuario_final = id_usuario_logado
-            usuario_nome_final = login_usuario
+            usuario_nome_final = nome_usuario # <--- NOME COMPLETO USADO NO REGISTRO
             # -------------------------------
             
             id_tipo = int(tipos_map[tipo_nome])
             
-            # Garantia de que os IDs são extraídos corretamente
             id_categoria_final = int(df_cats_filtradas[df_cats_filtradas['dsc_categoriatransacao'] == categoria_nome]['id_categoria'].iloc[0])
             id_subcategoria_final = int(df_subs_filtradas[df_subs_filtradas['dsc_subcategoriatransacao'] == subcategoria_nome]['id_subcategoria'].iloc[0])
             
@@ -835,15 +823,13 @@ def formulario_transacao():
                       "id_subcategoria", "dsc_subcategoriatransacao", "id_usuario", "dsc_nomeusuario",
                       "dsc_transacao", "vl_transacao", "cd_quempagou", "cd_edividido", "cd_foidividido") 
             
-            # Esta função deve estar definida no seu main.py
+            # A função inserir_dados deve estar definida
             inserir_dados(tabela="stg_transacoes", dados=dados, campos=campos)
             st.success(f"Transação '{descricao}' registrada com sucesso por {usuario_nome_final}!")
         else:
             st.warning("Verifique se o Valor, Descrição e Categorias/Subcategorias válidas foram selecionadas.")
 
     st.subheader("Transações em Staging")
-    # Agora você deve usar a view otimizada: 'vw_stg_transacoes'
-    # CORREÇÃO: Argumento 'usar_view=True' REMOVIDO
     df_stg = consultar_dados("vw_stg_transacoes") 
     st.dataframe(df_stg, use_container_width=True)
 
