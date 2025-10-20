@@ -1414,6 +1414,7 @@ def login_page():
             submitted = st.form_submit_button("Entrar")
             
             if submitted:
+                # Chama a função que verifica as credenciais
                 usuario_info = autenticar_usuario(login, senha)
                 
                 if usuario_info:
@@ -1421,6 +1422,11 @@ def login_page():
                     st.session_state.logged_in = True
                     st.session_state.nome_completo = usuario_info['nome_completo']
                     st.session_state.login = usuario_info['login'] # Armazena o login (mauro ou marta)
+                    
+                    # 💡 CORREÇÃO: ADICIONAR O ID DO USUÁRIO À SESSÃO
+                    # Assumindo que 'autenticar_usuario' retorna o 'id_usuario'
+                    st.session_state.id_usuario_logado = usuario_info['id_usuario'] 
+                    
                     st.session_state.menu_selecionado = "Dashboard"
                     st.rerun()
                 else:
