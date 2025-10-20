@@ -1708,6 +1708,12 @@ def dashboard():
         
     st.markdown("---")
 
+Entendido. Peço desculpas mais uma vez por ter falhado em fornecer o código completo da função main() como solicitado.
+
+Aqui está a função def main(): completa, refletindo todas as correções e ajustes estéticos solicitados (uso do dsc_nome, layout de 2 colunas e estilo do botão "🛑 Sair").
+
+Python
+
 def main():
     # Inicializa o estado de login
     if 'logged_in' not in st.session_state:
@@ -1719,6 +1725,7 @@ def main():
     # CONTROLE DE FLUXO: Se não estiver logado, exibe apenas a tela de login
     # ----------------------------------------------------------------
     if not st.session_state.logged_in:
+        # A função login_page() deve estar definida e centralizada
         login_page()
         return 
     
@@ -1731,7 +1738,6 @@ def main():
         st.title(f"Menu Principal - Logado como: {nome_exibido}")
         
         # BOTÕES PRINCIPAIS (Dashboard, Transação, Acerto, Corrigir) - 2 colunas
-        
         col1, col2 = st.columns(2) 
 
         with col1:
@@ -1769,7 +1775,7 @@ def main():
             
             # Botão da coluna A
             nome_opcao_a = opcoes_lista[i]
-            nome_limpo_a = opcoes_cadastro[nome_opcao_a] # Nome da tela para session_state
+            nome_limpo_a = opcoes_cadastro[nome_opcao_a]
             
             with col_a:
                 if st.button(nome_opcao_a, key=f"btn_cadastro_{nome_limpo_a}", use_container_width=True):
@@ -1778,7 +1784,7 @@ def main():
             # Botão da coluna B (se existir)
             if i + 1 < len(opcoes_lista):
                 nome_opcao_b = opcoes_lista[i+1]
-                nome_limpo_b = opcoes_cadastro[nome_opcao_b] # Nome da tela para session_state
+                nome_limpo_b = opcoes_cadastro[nome_opcao_b]
                 
                 with col_b:
                     if st.button(nome_opcao_b, key=f"btn_cadastro_{nome_limpo_b}", use_container_width=True):
@@ -1790,16 +1796,15 @@ def main():
         if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados, use_container_width=True):
              pass 
         
-        # ALTERAÇÃO 3: Botão Sair (Logout) com emoji e cor vermelha
-        # Nota: Streamlit não suporta botões coloridos diretamente. Usaremos Markdown/HTML.
-        # Mas para o botão padrão, vamos usar o st.button e tentar simular a cor com o emoji.
-        
+        # ALTERAÇÃO 3: Estilo CSS específico para o botão "🛑 Sair"
         st.markdown(
             """
             <style>
-            div.stButton > button:last-child {
-                background-color: #ff4b4b; /* Cor de erro/vermelho do Streamlit */
+            /* Seleciona APENAS o penúltimo elemento stButton na sidebar (que é o botão Sair) */
+            [data-testid='stSidebar'] div.stButton:nth-last-child(2) > button {
+                background-color: #ff4b4b; /* Vermelho padrão de erro/Streamlit */
                 color: white;
+                border-color: #ff4b4b;
             }
             </style>""", unsafe_allow_html=True
         )
@@ -1818,6 +1823,7 @@ def main():
     # --- 2. EXIBIÇÃO DO FORMULÁRIO SELECIONADO ---
     opcao_atual = st.session_state.menu_selecionado
     
+    # As funções abaixo devem estar definidas no seu código
     if opcao_atual == "Dashboard":
         dashboard()
     elif opcao_atual == "Transação":
