@@ -1513,8 +1513,9 @@ def dashboard():
     # -----------------------------------------------------------------
     today = datetime.date.today()
     
-    # 1. VISÃO PASSADA (Últimos 12 meses, incluindo o mês atual) - Para fig1
-    start_date_passado = today.replace(day=1) - relativedelta(months=11)
+    # 1. VISÃO PASSADA (13 meses: do 1º dia do mês 12 meses atrás até hoje) - Para fig1
+    # Se hoje é Out/2025, queremos começar em Out/2024. Subtraímos 12 meses.
+    start_date_passado = today.replace(day=1) - relativedelta(months=12)
     df_ultimos_12_meses = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= start_date_passado].copy()
     
     # 2. VISÃO FUTURA (Próximos 12 meses, excluindo o mês atual) - Para fig2
@@ -1528,7 +1529,7 @@ def dashboard():
 
 
     # -----------------------------------------------------------------
-    # GRÁFICO 1: Evolução Mensal (Últimos 12 Meses)
+    # GRÁFICO 1: Evolução Mensal (Últimos 13 Meses)
     # -----------------------------------------------------------------
     
     if not df_ultimos_12_meses.empty:
@@ -1543,14 +1544,12 @@ def dashboard():
             x='ano_mes',
             y='vl_transacao',
             color='dsc_categoriatransacao',
-            title='Evolução das Transações por Categoria (Últimos 12 Meses)',
+            title='Evolução das Transações por Categoria (Últimos 13 Meses)',
             labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
             category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
             color_discrete_sequence=PALETA_CORES 
         )
         fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Categoria')
-        
-        # CRÍTICO: Formatação do eixo Y (Valor) para 2 casas decimais sem R$
         fig1.update_yaxes(tickformat=".2f") 
     else:
         fig1 = None
@@ -1577,8 +1576,6 @@ def dashboard():
             color_discrete_sequence=PALETA_CORES 
         )
         fig2.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Categoria')
-        
-        # CRÍTICO: Formatação do eixo Y (Valor) para 2 casas decimais sem R$
         fig2.update_yaxes(tickformat=".2f")
     else:
         fig2 = None
@@ -1594,7 +1591,7 @@ def dashboard():
         if fig1:
             st.plotly_chart(fig1, use_container_width=True)
         else:
-            st.info("Dados insuficientes nos últimos 12 meses.")
+            st.info("Dados insuficientes nos últimos 13 meses.")
 
     with col_grafico2:
         st.subheader("Transações Agendadas (Futuro)")
