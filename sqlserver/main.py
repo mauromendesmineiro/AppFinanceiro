@@ -1708,12 +1708,6 @@ def dashboard():
         
     st.markdown("---")
 
-Entendido. Peço desculpas mais uma vez por ter falhado em fornecer o código completo da função main() como solicitado.
-
-Aqui está a função def main(): completa, refletindo todas as correções e ajustes estéticos solicitados (uso do dsc_nome, layout de 2 colunas e estilo do botão "🛑 Sair").
-
-Python
-
 def main():
     # Inicializa o estado de login
     if 'logged_in' not in st.session_state:
