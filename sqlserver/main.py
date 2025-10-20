@@ -896,12 +896,16 @@ def exibir_detalhe_rateio():
         'mes' : 'Mês',
         'vl_saldoacertomensal': 'Saldo Líquido'
     }, inplace=True)
-    
+
+    # 💡 INCLUSÃO AQUI: Ordena o DataFrame por Ano (ASC) e Mês (ASC)
+    df_resumo.sort_values(by=['Ano', 'Mês'], inplace=True)
+
     # Função de estilo para o Resumo (CORRIGIDO A SINTAXE E ESPERA O VALOR NUMÉRICO)
     def color_saldo_resumo(val):
         # Garante que val é um número
         if isinstance(val, str):
             try:
+                # Lida com o formato brasileiro para conversão
                 val = float(val.replace('.', '').replace(',', '.'))
             except ValueError:
                 val = 0
@@ -915,14 +919,18 @@ def exibir_detalhe_rateio():
             color_saldo_resumo, 
             subset=['Saldo Líquido'] # Aplica a cor na coluna numérica
         ).format({
-            # Formatação para xx.xxx,xx
-            'Saldo Líquido': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        # 💡 CORREÇÃO 1: Formata 'Ano' como inteiro (sem decimais)
+        'Ano': "{:.0f}",
+        # 💡 CORREÇÃO 2: Formata 'Mês' como inteiro (sem decimais)
+        'Mês': "{:.0f}", 
+        # Formatação para xx.xxx,xx
+        'Saldo Líquido': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         }),
-        column_order=['Ano', 'Mes', 'Usuário', 'Saldo Líquido'],
+        column_order=['Ano', 'Mês', 'Usuário', 'Saldo Líquido'],
         use_container_width=True
     )
 
-    st.markdown("---") 
+    st.markdown("---")
 
     # ----------------------------------------------------------------------
     # 3. TABELA DETALHE: Detalhe por Transação (vw_AcertoTransacao)
