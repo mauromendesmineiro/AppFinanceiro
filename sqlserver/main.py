@@ -1555,7 +1555,7 @@ def dashboard():
             x='ano_mes',
             y='vl_transacao',
             color='dsc_categoriatransacao',
-            title='Evolução das Transações por Categoria (Novembro/2024 até Novembro/2025)',
+            title='Históricos de Transações por Categoria',
             labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
             category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
             color_discrete_sequence=PALETA_CORES 
@@ -1581,7 +1581,7 @@ def dashboard():
             x='ano_mes',
             y='vl_transacao',
             color='dsc_categoriatransacao',
-            title='Transações Futuras Registradas por Categoria (Dezembro/2025 a Novembro/2026)',
+            title='Transações Futuras por Categoria',
             labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
             category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada},
             color_discrete_sequence=PALETA_CORES 
