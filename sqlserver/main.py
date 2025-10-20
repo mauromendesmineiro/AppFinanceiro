@@ -1557,18 +1557,21 @@ def dashboard():
     # -----------------------------------------------------------------
     today = datetime.date.today()
     
-    # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025)
-    start_date_passado = today.replace(day=1) - relativedelta(months=11)
-    end_limit_passado = today.replace(day=1) + relativedelta(months=2) 
-    
+    # 1. VISÃO PASSADA (13 meses: OUT/2024 até OUT/2025, INCLUSIVE) - Para fig1 e fig3
+    # MUDANÇA: Ir 12 meses para trás para começar em Outubro do ano anterior.
+    start_date_passado = today.replace(day=1) - relativedelta(months=12) 
+    end_limit_passado = today.replace(day=1) + relativedelta(months=1) # 1º dia do próximo mês (para incluir o mês atual completo)
+
     meses_passado = [
+        # MUDANÇA: O range agora tem 13 meses (de 12 até 0)
         (today.replace(day=1) - relativedelta(months=i)).strftime('%Y-%m')
-        for i in range(11, -1, -1) 
+        for i in range(12, -1, -1) 
     ]
     
     df_passado_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_passado)].copy()
     
-    # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026)
+    # 2. VISÃO FUTURA (12 meses: NOV/2025 até OUT/2026) - Para fig2 e fig4
+    # O futuro continua começando no próximo mês
     start_date_futuro = today.replace(day=1) + relativedelta(months=1)
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
