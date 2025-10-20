@@ -7,6 +7,7 @@ import psycopg2
 from psycopg2 import sql
 import plotly.colors as colors
 import numpy as np
+import plotly.graph_objects as go
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -1511,18 +1512,16 @@ def dashboard():
     if not df_transacoes.empty:
         df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
         
-        # Agrupar Despesas e Receitas por data e tipo
         df_transacoes_tipo = df_transacoes.groupby(['dt_datatransacao', 'dsc_tipotransacao'])['vl_transacao'].sum().reset_index()
         df_transacoes_tipo = df_transacoes_tipo.rename(columns={'vl_transacao': 'Valor'})
         df_transacoes_tipo['ano_mes'] = df_transacoes_tipo['dt_datatransacao'].dt.to_period('M').astype(str)
         
-        # CORREÇÃO: Filtrar por 'Despesas' e 'Receita' (valores da sua tabela)
+        # Filtra por 'Despesas' e 'Receita' (valores da sua tabela)
         df_transacoes_tipo = df_transacoes_tipo[df_transacoes_tipo['dsc_tipotransacao'].isin(['Receita', 'Despesas'])].copy()
 
-        # Renomear os tipos para o singular para o processamento de saldo (Despesa e Receita)
+        # Renomear os tipos para o singular para o processamento de saldo
         df_transacoes_tipo['Tipo'] = df_transacoes_tipo['dsc_tipotransacao'].replace({'Despesas': 'Despesa', 'Receita': 'Receita'})
         
-        # Selecionar as colunas finais
         df_transacoes_tipo = df_transacoes_tipo[['ano_mes', 'Tipo', 'Valor']]
     else:
         df_transacoes_tipo = pd.DataFrame(columns=['ano_mes', 'Tipo', 'Valor'])
@@ -1531,12 +1530,11 @@ def dashboard():
     if not df_salario.empty:
         df_salario['dt_recebimento'] = pd.to_datetime(df_salario['dt_recebimento']) 
         
-        # Agrupar a soma dos salários por mês
         df_salario_agregado = df_salario.groupby(df_salario['dt_recebimento'].dt.to_period('M'))['vl_salario'].sum().reset_index()
         
         df_salario_agregado['ano_mes'] = df_salario_agregado['dt_recebimento'].astype(str) 
         df_salario_agregado = df_salario_agregado.rename(columns={'vl_salario': 'Valor'})
-        df_salario_agregado['Tipo'] = 'Receita (Salário)' # Tipo diferente para ser somado em 'gerar_df_saldo'
+        df_salario_agregado['Tipo'] = 'Receita (Salário)'
         
         df_salario_final = df_salario_agregado[['ano_mes', 'Tipo', 'Valor']].copy()
     else:
@@ -1549,7 +1547,6 @@ def dashboard():
         df_salario_final
     ])
     
-    # Agrupar novamente por Mês/Ano e Tipo para consolidar (ex: Receita da stg + Receita Salário)
     df_dados_mensais = df_dados_mensais.groupby(['ano_mes', 'Tipo'])['Valor'].sum().reset_index()
     
     
@@ -1560,7 +1557,7 @@ def dashboard():
     # -----------------------------------------------------------------
     today = datetime.date.today()
     
-    # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025, INCLUSIVE) - Para fig1 e fig3
+    # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025)
     start_date_passado = today.replace(day=1) - relativedelta(months=11)
     end_limit_passado = today.replace(day=1) + relativedelta(months=2) 
     
@@ -1571,7 +1568,7 @@ def dashboard():
     
     df_passado_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_passado)].copy()
     
-    # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026) - Para fig2 e fig4
+    # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026)
     start_date_futuro = today.replace(day=1) + relativedelta(months=1)
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
@@ -1598,10 +1595,7 @@ def dashboard():
             aggfunc='sum'
         ).fillna(0)
         
-        # Soma a Receita da stg_transacoes com a Receita (Salário) da fact_salario
         df_pivot['Receita'] = df_pivot.get('Receita', 0) + df_pivot.get('Receita (Salário)', 0)
-        
-        # Usa 'Despesa' (singular)
         df_pivot['Despesa'] = df_pivot.get('Despesa', 0) 
         
         df_pivot['Saldo_Mensal'] = df_pivot['Receita'] - df_pivot['Despesa']
@@ -1624,6 +1618,78 @@ def dashboard():
 
 
     # -----------------------------------------------------------------
+    # FUNÇÃO AUXILIAR PARA CRIAR O GRÁFICO COMBINADO (Barra + Linha)
+    # -----------------------------------------------------------------
+    def criar_grafico_saldo_combinado(df_saldo, titulo):
+        # Pivotar de volta para o formato largo para facilitar a plotagem separada
+        df_pivot = df_saldo.pivot_table(
+            index='ano_mes',
+            columns='Tipo',
+            values='Valor'
+        ).fillna(0).reset_index()
+        
+        meses_ordenados = sorted(df_pivot['ano_mes'].unique())
+        df_pivot = df_pivot.set_index('ano_mes').reindex(meses_ordenados).reset_index()
+        
+        fig = go.Figure()
+
+        # 1. Barras de Receita
+        fig.add_trace(go.Bar(
+            x=df_pivot['ano_mes'],
+            y=df_pivot['Receita'],
+            name='Receita',
+            marker_color='#4BBF7C'
+        ))
+
+        # 2. Barras de Despesa
+        fig.add_trace(go.Bar(
+            x=df_pivot['ano_mes'],
+            y=df_pivot['Despesa'],
+            name='Despesa',
+            marker_color='#FF6347'
+        ))
+
+        # 3. Linha de Saldo
+        fig.add_trace(go.Scatter(
+            x=df_pivot['ano_mes'],
+            y=df_pivot['Saldo_Mensal'],
+            name='Saldo',
+            mode='lines+markers',
+            line=dict(color='#4682B4', width=3),
+            marker=dict(size=8),
+            yaxis='y2' # Usa o eixo Y secundário
+        ))
+
+        # Configurações de Layout
+        fig.update_layout(
+            title=titulo,
+            # Eixo Y primário (Receita/Despesa)
+            yaxis=dict(
+                title='Receita / Despesa',
+                tickformat=".2f"
+            ),
+            # Eixo Y secundário (Saldo)
+            yaxis2=dict(
+                title='Saldo',
+                overlaying='y',
+                side='right',
+                tickformat=".2f"
+            ),
+            barmode='group',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            xaxis_title='Mês/Ano'
+        )
+        
+        return fig
+
+
+    # -----------------------------------------------------------------
     # PRIMEIRA LINHA DE GRÁFICOS (SALDO)
     # -----------------------------------------------------------------
     col_saldo_passado, col_saldo_futuro = st.columns(2)
@@ -1634,20 +1700,10 @@ def dashboard():
     with col_saldo_passado:
         st.subheader("Balanço Mensal (Passado)")
         if not df_saldo_passado_final.empty:
-            
-            fig3 = px.bar(
+            fig3 = criar_grafico_saldo_combinado(
                 df_saldo_passado_final,
-                x='ano_mes',
-                y='Valor',
-                color='Tipo',
-                barmode='group', 
-                title='Receitas, Despesas e Saldo (Últimos 13 Meses)',
-                labels={'ano_mes': 'Mês/Ano', 'Valor': 'Valor Total'},
-                color_discrete_sequence=['#4BBF7C', '#FF6347', '#4682B4'], 
-                category_orders={"ano_mes": sorted(df_saldo_passado_final['ano_mes'].unique())}
+                'Receitas, Despesas e Saldo (Últimos 13 Meses)'
             )
-            fig3.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Tipo')
-            fig3.update_yaxes(tickformat=".2f")
             st.plotly_chart(fig3, use_container_width=True)
         else:
             st.info("Dados de balanço insuficientes no período passado.")
@@ -1659,20 +1715,10 @@ def dashboard():
     with col_saldo_futuro:
         st.subheader("Balanço Mensal (Futuro)")
         if not df_saldo_futuro_final.empty:
-            
-            fig4 = px.bar(
+            fig4 = criar_grafico_saldo_combinado(
                 df_saldo_futuro_final,
-                x='ano_mes',
-                y='Valor',
-                color='Tipo',
-                barmode='group',
-                title='Projeção de Balanço (Próximos 12 Meses)',
-                labels={'ano_mes': 'Mês/Ano', 'Valor': 'Valor Total'},
-                color_discrete_sequence=['#4BBF7C', '#FF6347', '#4682B4'],
-                category_orders={"ano_mes": sorted(df_saldo_futuro_final['ano_mes'].unique())}
+                'Projeção de Balanço (Próximos 12 Meses)'
             )
-            fig4.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Tipo')
-            fig4.update_yaxes(tickformat=".2f")
             st.plotly_chart(fig4, use_container_width=True)
         else:
             st.info("Nenhuma transação agendada para o balanço futuro.")
