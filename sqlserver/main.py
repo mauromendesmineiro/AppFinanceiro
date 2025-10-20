@@ -1514,24 +1514,23 @@ def dashboard():
     today = datetime.date.today()
     
     # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025, INCLUSIVE) - Para fig1
-    # Se hoje é Out/2025, subtraímos 11 meses do dia 1 para obter Nov/2024.
-    # Se o mês atual da transação for Nov/2025, ele será incluído se a data de início for anterior.
-    
-    # Vamos usar uma abordagem mais robusta, garantindo que a data de início seja o mês que você quer (Nov 2024)
-    # Supondo que today = 2025-10-20 (Outubro 2025)
-    
-    # Data de Início: 1 de Novembro do ano passado (para o seu exemplo, 2024)
+    # Início: 1 de Novembro do ano passado
     start_date_passado = today.replace(day=1) - relativedelta(months=11)
     
-    # Se today é Out/2025: 1 Out 2025 - 11 meses = 1 Nov 2024.
-    df_ultimos_12_meses = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= start_date_passado].copy()
+    # CRÍTICO: Limite Fim (Exclusivo): 1 de Dezembro de 2025 (garante que NOV/2025 seja o último mês)
+    end_limit_passado = today.replace(day=1) + relativedelta(months=2) 
+    
+    df_ultimos_12_meses = df_transacoes[
+        (df_transacoes['dt_datatransacao'].dt.date >= start_date_passado) &
+        (df_transacoes['dt_datatransacao'].dt.date < end_limit_passado) # Novo Limite
+    ].copy()
     
     # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026, EXCLUINDO o mês atual) - Para fig2
     
-    # Data de Início: 1 de Dezembro de 2025 (próximo mês após o atual)
-    start_date_futuro = today.replace(day=1) + relativedelta(months=1)
+    # CRÍTICO: Início: 1 de Dezembro de 2025 (2 meses após o 1º dia do mês atual)
+    start_date_futuro = today.replace(day=1) + relativedelta(months=2)
     
-    # Data de Fim: 12 meses após a data de início (Dez/2026), para usar o filtro "<"
+    # Limite Fim (Exclusivo): 1 de Dezembro de 2026 (12 meses após o início)
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
     df_proximos_12_meses = df_transacoes[
@@ -1556,7 +1555,7 @@ def dashboard():
             x='ano_mes',
             y='vl_transacao',
             color='dsc_categoriatransacao',
-            title='Evolução das Transações por Categoria (Novembro/2024 até Hoje)',
+            title='Evolução das Transações por Categoria (Novembro/2024 até Novembro/2025)',
             labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
             category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
             color_discrete_sequence=PALETA_CORES 
@@ -1567,7 +1566,7 @@ def dashboard():
         fig1 = None
 
     # -----------------------------------------------------------------
-    # GRÁFICO 2: Evolução Mensal (Próximos 12 Meses, Excluindo o Mês Atual)
+    # GRÁFICO 2: Evolução Mensal (Próximos 12 Meses)
     # -----------------------------------------------------------------
     
     if not df_proximos_12_meses.empty:
@@ -1582,7 +1581,7 @@ def dashboard():
             x='ano_mes',
             y='vl_transacao',
             color='dsc_categoriatransacao',
-            title='Transações Futuras Registradas por Categoria (12 Meses a Partir do Próximo)',
+            title='Transações Futuras Registradas por Categoria (Dezembro/2025 a Novembro/2026)',
             labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
             category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada},
             color_discrete_sequence=PALETA_CORES 
