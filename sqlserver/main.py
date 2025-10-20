@@ -1492,6 +1492,7 @@ def dashboard():
     
     # 1. CONSULTA DE DADOS
     try:
+        # Consulta a tabela de staging de transações.
         df_transacoes = consultar_dados("stg_transacoes") 
     except Exception as e:
         st.warning(f"Não foi possível carregar os dados de transação. Verifique a tabela 'stg_transacoes' e a conexão. Erro: {e}")
@@ -1507,54 +1508,69 @@ def dashboard():
     df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
     
     # -----------------------------------------------------------------
-    # CRÍTICO: FILTRO PARA ÚLTIMOS 12 MESES (Gráfico 1)
+    # FILTRO DE TEMPO
     # -----------------------------------------------------------------
-    
     today = datetime.date.today()
-    # Calcula a data de início: 11 meses atrás, começando no dia 1 daquele mês.
-    # Ex: Se hoje é Out/2025, a data de início é Nov/2024.
-    start_date = today.replace(day=1) - relativedelta(months=11)
     
-    # Filtra o DataFrame para os últimos 12 meses
-    df_ultimos_12_meses = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= start_date].copy()
+    # 1. VISÃO PASSADA (Últimos 12 meses, incluindo o mês atual) - Para fig1
+    start_date_passado = today.replace(day=1) - relativedelta(months=11)
+    df_ultimos_12_meses = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= start_date_passado].copy()
     
-    if df_ultimos_12_meses.empty:
-        st.info("Nenhuma transação registrada nos últimos 12 meses para gerar o primeiro gráfico.")
-        return
-        
-    # Cria a coluna de período (Ex: '2025-10') para o eixo X
-    df_ultimos_12_meses['ano_mes'] = df_ultimos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
+    # 2. VISÃO FUTURA (Próximos 12 meses, excluindo o mês atual) - Para fig2
+    start_date_futuro = today.replace(day=1) + relativedelta(months=1) # Começa no dia 1 do próximo mês
+    # O filtro vai até 12 meses após o início do próximo mês
+    end_date_futuro = start_date_futuro + relativedelta(months=12)
     
+    df_proximos_12_meses = df_transacoes[
+        (df_transacoes['dt_datatransacao'].dt.date >= start_date_futuro) &
+        (df_transacoes['dt_datatransacao'].dt.date < end_date_futuro)
+    ].copy()
+
+
     # -----------------------------------------------------------------
     # GRÁFICO 1: Evolução Mensal (Últimos 12 Meses)
     # -----------------------------------------------------------------
     
-    df_agregado_mensal = df_ultimos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
-    fig1 = px.bar(
-        df_agregado_mensal,
-        x='ano_mes',
-        y='vl_transacao',
-        color='dsc_categoriatransacao',
-        title='Evolução das Transações por Categoria (Últimos 12 Meses)',
-        labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'}
-    )
-    fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
-    
-    # -----------------------------------------------------------------
-    # GRÁFICO 2: Distribuição Total de Despesas (Sem filtro de tempo)
-    # -----------------------------------------------------------------
+    if not df_ultimos_12_meses.empty:
+        df_ultimos_12_meses['ano_mes'] = df_ultimos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
+        df_agregado_mensal = df_ultimos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
+        
+        fig1 = px.bar(
+            df_agregado_mensal,
+            x='ano_mes',
+            y='vl_transacao',
+            color='dsc_categoriatransacao',
+            title='Evolução das Transações por Categoria (Últimos 12 Meses)',
+            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'}
+        )
+        fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
+    else:
+        fig1 = None
 
-    df_despesas_totais = df_transacoes[df_transacoes['dsc_tipotransacao'] == 'Despesa']
-    df_agregado_total = df_despesas_totais.groupby('dsc_categoriatransacao')['vl_transacao'].sum().reset_index()
+    # -----------------------------------------------------------------
+    # GRÁFICO 2: Evolução Mensal (Próximos 12 Meses) - NOVO GRÁFICO DE BARRAS
+    # -----------------------------------------------------------------
     
-    fig2 = px.pie(
-        df_agregado_total,
-        values='vl_transacao',
-        names='dsc_categoriatransacao',
-        title='Distribuição Total de Despesas por Categoria (Todo Período)'
-    )
-    fig2.update_traces(textposition='inside', textinfo='percent+label')
-    
+    if not df_proximos_12_meses.empty:
+        # Filtra apenas despesas para o gráfico de distribuição futura (se aplicável, mas aqui mostramos todas as transações futuras)
+        # Se quiser apenas Despesas: df_despesas_futuras = df_proximos_12_meses[df_proximos_12_meses['dsc_tipotransacao'] == 'Despesa']
+        
+        df_proximos_12_meses['ano_mes'] = df_proximos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
+        
+        df_agregado_futuro = df_proximos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
+        
+        fig2 = px.bar(
+            df_agregado_futuro,
+            x='ano_mes',
+            y='vl_transacao',
+            color='dsc_categoriatransacao',
+            title='Transações Futuras Registradas por Categoria (Próximos 12 Meses)',
+            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total (R$)'}
+        )
+        fig2.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor (R$)', legend_title='Categoria')
+    else:
+        fig2 = None
+
     # -----------------------------------------------------------
     # RENDERIZAÇÃO DE 2 GRÁFICOS POR LINHA
     # -----------------------------------------------------------
@@ -1562,12 +1578,18 @@ def dashboard():
     col_grafico1, col_grafico2 = st.columns(2)
     
     with col_grafico1:
-        st.subheader("Evolução Mensal")
-        st.plotly_chart(fig1, use_container_width=True)
+        st.subheader("Evolução Mensal (Passado)")
+        if fig1:
+            st.plotly_chart(fig1, use_container_width=True)
+        else:
+            st.info("Dados insuficientes nos últimos 12 meses.")
 
     with col_grafico2:
-        st.subheader("Distribuição de Despesas")
-        st.plotly_chart(fig2, use_container_width=True)
+        st.subheader("Transações Agendadas (Futuro)")
+        if fig2:
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("Nenhuma transação agendada/registrada para os próximos 12 meses.")
 
 def main():
     # Inicializa o estado de login
