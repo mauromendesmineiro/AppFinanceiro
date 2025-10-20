@@ -46,11 +46,18 @@ def consultar_dados(tabela_ou_view, usar_view=False):
         st.error(f"Erro inesperado ao conectar ou consultar: {e}")
         
     finally:
-        # Garante que a conexão será fechada, independentemente de erro ou sucesso
-        if conn:
-            conn.close()
-            
+            # Garante que a conexão será fechada, independentemente de erro ou sucesso
+            if conn:
+                conn.close()
+                
     return df
+
+def limpar_cache_dados():
+    """Limpa o cache do Streamlit para forçar a recarga dos dados do banco."""
+    # st.cache_data é a decorator que usamos na consultar_dados
+    st.cache_data.clear() 
+    st.success("Cache de dados limpo. Recarregando as análises...")
+    st.rerun()
 
 def inserir_dados(tabela, dados, campos):
     conn = None
@@ -630,12 +637,15 @@ def formulario_salario():
         })
         
         # 4. Aplica a Formatação de Moeda
-        df_exibicao['Valor do Salário'] = df_exibicao['Valor do Salário'].apply(formatar_moeda)
+        colunas_finais = [
+            "nomeusuario",      # Antigo: "NomeUsuario"
+            "vl_salario",       # Antigo: "VL_Salario"
+            "dt_recebimento",   # Antigo: "Dt_Recebimento"
+            "ano",              # Antigo: "Ano"
+            "mes",              # Antigo: "Mes"
+            "dsc_observacao"    # Antigo: "Dsc_Observacao"
+        ]
 
-        # 5. Seleção e Exibição das Colunas Solicitadas
-        # Colunas na ordem: Ano, Mes, Usuário, Valor do Salário, Descrição do Salário
-        colunas_finais = ['Ano', 'Mes', 'Usuário', 'Valor do Salário', 'Descrição do Salário']
-        
         st.dataframe(df_exibicao[colunas_finais], hide_index=True, use_container_width=True)
 
     else:
@@ -865,6 +875,8 @@ def exibir_detalhe_rateio():
     # Renomeação do Resumo
     df_resumo.rename(columns={
         'cd_quemdeve': 'Usuário',
+        'ano' : 'Ano',
+        'mes' : 'Mês',
         'vl_saldoacertomensal': 'Saldo Líquido'
     }, inplace=True)
     
@@ -1460,6 +1472,15 @@ def main():
             for nome_opcao, _ in opcoes_menu.items():
                 if st.button(nome_opcao, key=f"btn_menu_{nome_opcao}"):
                     st.session_state.menu_selecionado = nome_opcao
+                    
+            # --- NOVO BOTÃO DE LIMPEZA DE CACHE ---
+            st.markdown("---")
+            st.subheader("Ferramentas")
+            
+            if st.button("🔄 Forçar Recarga de Dados", help="Use após criar ou alterar views/tabelas no banco de dados.", key="btn_limpar_cache"):
+                 # Chamada à função de limpeza de cache (que deve ser definida no main.py)
+                 limpar_cache_dados() 
+            # --- FIM NOVO BOTÃO ---
 
             st.markdown("---")
             st.subheader("Cadastros e Manutenção")
