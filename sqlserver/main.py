@@ -1706,109 +1706,66 @@ def dashboard():
     st.markdown("---")
 
 def main():
-    
-    # ----------------------------------------------------
-    # 0. INICIALIZAÇÃO DO ESTADO DE SESSÃO (Login)
-    # ----------------------------------------------------
-    if 'logged_in' not in st.session_state:
-        st.session_state.logged_in = False
-    
-    # ----------------------------------------------------
-    # 1. CONTROLE DE ACESSO
-    # ----------------------------------------------------
-    if not st.session_state.logged_in:
-        # Se não estiver logado, exibe a página de login
-        login_page()
-    else:
-        # ----------------------------------------------------
-        # TUDO ABAIXO SÓ É EXIBIDO SE O USUÁRIO ESTIVER LOGADO
-        # ----------------------------------------------------
+    # Inicializa o estado da sessão, se necessário (Lógica de Login/Navegação)
+    if 'menu_selecionado' not in st.session_state:
+        st.session_state.menu_selecionado = "Dashboard"
+
+    # --- 1. SIDEBAR (Menu Principal) ---
+    with st.sidebar:
+        # Seção principal do Menu
+        st.title("Menu Principal")
         
-        # 1. INICIALIZAÇÃO DO ESTADO DE SESSÃO (Menu)
-        if 'menu_selecionado' not in st.session_state:
-            st.session_state.menu_selecionado = "Dashboard"
+        # Opções principais
+        col_dash, col_trans = st.columns(2)
+        with col_dash:
+            if st.button("📊 Dashboard", key="btn_dashboard", use_container_width=True):
+                st.session_state.menu_selecionado = "Dashboard"
+        with col_trans:
+            if st.button("💵 Transação", key="btn_transacao", use_container_width=True):
+                st.session_state.menu_selecionado = "Transação"
+
+        # ... (Você pode completar esta seção com o restante dos seus botões)
+
+        st.subheader("Cadastros (Dimensões)")
         
-        # Saudação com o nome completo
-        st.title(f"Bem-vindo(a), {st.session_state.nome_completo}!")
+        # Opções de cadastro (dimensões) - Adapte esta lógica ao seu código real
+        opcoes_cadastro = {
+            "Tipos de Transação": formulario_tipo_transacao,
+            "Categorias": formulario_categoria,
+            "Subcategorias": formulario_subcategoria,
+            "Usuários": formulario_usuario,
+            "Salário": formulario_salario, # Coloque Salário aqui ou no topo, dependendo do seu fluxo
+        }
+        
+        for nome_opcao, func_opcao in opcoes_cadastro.items():
+            if st.button(nome_opcao, key=f"btn_cadastro_{nome_opcao}", use_container_width=True):
+                st.session_state.menu_selecionado = nome_opcao
+
+        # Botão para limpar cache (Útil)
         st.markdown("---")
+        if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados):
+             pass # A função on_click fará o trabalho
 
-        # ----------------------------------------------------
-        # 2. BOTÃO DE LOGOUT E MENU NA SIDEBAR
-        # ----------------------------------------------------
-        with st.sidebar:
-            if st.button("🔴 Sair (Logout)", type="primary"):
-                # Limpa o estado da sessão e força o reran para a tela de login
-                st.session_state.logged_in = False
-                st.session_state.nome_completo = None
-                st.session_state.login = None
-                st.rerun()
-                
-            # Restante da sidebar (Menus)
-            st.subheader("Menu Principal")
-            
-            opcoes_menu = {
-                "Dashboard": None,
-                "Transação": formulario_transacao,
-                "Salário": formulario_salario,
-                "Corrigir Transação": editar_transacao,
-                "Acerto de Contas": exibir_detalhe_rateio 
-            }
-            
-            # Cria um botão para cada opção de menu principal
-            for nome_opcao, _ in opcoes_menu.items():
-                if st.button(nome_opcao, key=f"btn_menu_{nome_opcao}"):
-                    st.session_state.menu_selecionado = nome_opcao
-                    
-            # --- NOVO BOTÃO DE LIMPEZA DE CACHE ---
-            st.markdown("---")
-            st.subheader("Ferramentas")
-            
-            if st.button("🔄 Forçar Recarga de Dados", help="Use após criar ou alterar views/tabelas no banco de dados.", key="btn_limpar_cache"):
-                 # Chamada à função de limpeza de cache (que deve ser definida no main.py)
-                 limpar_cache_dados() 
-            # --- FIM NOVO BOTÃO ---
-
-            st.markdown("---")
-            st.subheader("Cadastros e Manutenção")
-            
-            # Opções de cadastro (Manutenção de Dimensões)
-            opcoes_cadastro = {
-                "Tipos de Transação": formulario_tipo_transacao,
-                "Categorias": formulario_categoria,
-                "Subcategorias": formulario_subcategoria,
-                "Usuários": formulario_usuario
-            }
-            
-            # Cria um botão para cada opção de cadastro
-            for nome_opcao, _ in opcoes_cadastro.items():
-                if st.button(nome_opcao, key=f"btn_{nome_opcao}"):
-                    st.session_state.menu_selecionado = nome_opcao
-
-        # ----------------------------------------------------
-        # 3. EXIBIÇÃO DO FORMULÁRIO SELECIONADO
-        # ----------------------------------------------------
-        
-        # Exibe o formulário com base na opção armazenada no estado da sessão
-        opcao_atual = st.session_state.menu_selecionado
-        
-        if opcao_atual == "Dashboard":
-            dashboard()
-        elif opcao_atual == "Transação":
-            formulario_transacao()
-        elif opcao_atual == "Salário":
-            formulario_salario()
-        elif opcao_atual == "Corrigir Transação": 
-            editar_transacao()
-        elif opcao_atual == "Acerto de Contas":
-            exibir_detalhe_rateio()
-        elif opcao_atual == "Tipos de Transação":
-            formulario_tipo_transacao()
-        elif opcao_atual == "Categorias":
-            formulario_categoria()
-        elif opcao_atual == "Subcategorias":
-            formulario_subcategoria()
-        elif opcao_atual == "Usuários":
-            formulario_usuario()
-
-if __name__ == '__main__':
+    # --- 2. EXIBIÇÃO DO FORMULÁRIO SELECIONADO ---
+    opcao_atual = st.session_state.menu_selecionado
+    
+    if opcao_atual == "Dashboard":
+        dashboard()
+    elif opcao_atual == "Transação":
+        formulario_transacao()
+    elif opcao_atual == "Salário":
+        formulario_salario()
+    # Adicione aqui o restante dos seus `elif` para todos os formulários e dashboards
+    elif opcao_atual == "Tipos de Transação":
+        formulario_tipo_transacao()
+    elif opcao_atual == "Categorias":
+        formulario_categoria()
+    elif opcao_atual == "Subcategorias":
+        formulario_subcategoria()
+    elif opcao_atual == "Usuários":
+        formulario_usuario()
+    # ... e assim por diante
+    
+# ESTE BLOCO É O MAIS CRÍTICO: CHAMA A FUNÇÃO main() PARA INICIAR O APP
+if __name__ == "__main__":
     main()
