@@ -1,10 +1,8 @@
 import streamlit as st
-import psycopg2
 import pandas as pd
+import plotly.express as px
 import datetime
 from dateutil.relativedelta import relativedelta
-import plotly.express as px
-import plotly.graph_objects as go
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -1507,36 +1505,44 @@ def dashboard():
     # --------------------------------------------------------------------------
     # 0. CARREGAMENTO E UNIFICAÇÃO DE DADOS (Receitas + Despesas)
     # --------------------------------------------------------------------------
+    # Consulta tabelas/views necessárias
     df_transacoes = consultar_dados("stg_transacoes") 
     df_salario = consultar_dados("fact_salario")
 
     if df_transacoes.empty and df_salario.empty:
         st.warning("Nenhum dado de transação ou salário encontrado para exibir no Dashboard.")
-        return # Termina a função se não houver dados
-    
-    # Normalização e Unificação
+        return 
     
     # 1. Normaliza df_transacoes (Despesas e outras Receitas)
-    df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
+    # Garante que a coluna de data exista, mesmo que df_transacoes esteja vazio
+    df_trans_cols = pd.DataFrame(columns=['dt_datatransacao', 'vl_transacao', 'dsc_tipotransacao'])
+    if not df_transacoes.empty:
+        df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
+        # Seleciona as colunas comuns para o concat
+        df_trans_cols = df_transacoes[['dt_datatransacao', 'vl_transacao', 'dsc_tipotransacao']]
     
-    # 2. Normaliza df_salario (Receita principal)
+    
+    # 2. Normaliza df_salario (Receita principal) - CORREÇÃO DE ATRIBUIÇÃO
     df_salario_norm = pd.DataFrame()
     if not df_salario.empty:
         df_salario['dt_recebimento'] = pd.to_datetime(df_salario['dt_recebimento'])
-        df_salario_norm['dt_datatransacao'] = df_salario['dt_recebimento']
-        df_salario_norm['vl_transacao'] = df_salario['vl_salario']
-        # Assumimos que todo salário é Receita.
+        
+        # Cria o df_salario_norm renomeando as colunas e garantindo um índice válido
+        df_salario_norm = df_salario.rename(columns={'dt_recebimento': 'dt_datatransacao', 'vl_salario': 'vl_transacao'})
+        
+        # Seleciona apenas as colunas necessárias e define o tipo
+        df_salario_norm = df_salario_norm[['dt_datatransacao', 'vl_transacao']]
         df_salario_norm['dsc_tipotransacao'] = 'Receita' 
 
     # 3. Combina os DataFrames para a VISÃO HISTÓRICA
     df_combinado = pd.concat([
-        df_transacoes[['dt_datatransacao', 'vl_transacao', 'dsc_tipotransacao']], 
+        df_trans_cols, 
         df_salario_norm
     ]).reset_index(drop=True)
     
     if df_combinado.empty:
-        st.warning("Dados insuficientes após unificação.")
-        return
+        st.warning("Dados insuficientes após unificação para o Balanço Histórico.")
+        pass # Não retorna, apenas segue para a projeção se possível
 
 
     # --------------------------------------------------------------------------
@@ -1544,70 +1550,75 @@ def dashboard():
     # --------------------------------------------------------------------------
     st.subheader("Balanço Histórico Receita vs. Despesa (Últimos 12 Meses)")
     
-    # Filtra para obter os últimos 12 meses completos (incluindo o mês atual)
-    data_limite_historico = primeiro_dia_mes_atual - relativedelta(months=11)
-    # 💡 USA df_combinado aqui!
-    df_historico = df_combinado[df_combinado['dt_datatransacao'].dt.date >= data_limite_historico]
+    if not df_combinado.empty:
+        
+        # Filtra para obter os últimos 12 meses completos (incluindo o mês atual)
+        data_limite_historico = primeiro_dia_mes_atual - relativedelta(months=11)
+        df_historico = df_combinado[df_combinado['dt_datatransacao'].dt.date >= data_limite_historico]
 
-    if not df_historico.empty:
-        df_historico['Ano_Mes'] = df_historico['dt_datatransacao'].dt.strftime('%Y-%m')
-        
-        # Agrupamento e Pivotagem
-        df_agrupado = df_historico.groupby(['Ano_Mes', 'dsc_tipotransacao'])['vl_transacao'].sum().reset_index()
-        df_pivot = df_agrupado.pivot_table(
-            index='Ano_Mes', 
-            columns='dsc_tipotransacao', 
-            values='vl_transacao'
-        ).fillna(0).reset_index()
+        if not df_historico.empty:
+            df_historico['Ano_Mes'] = df_historico['dt_datatransacao'].dt.strftime('%Y-%m')
+            
+            # Agrupamento e Pivotagem
+            df_agrupado = df_historico.groupby(['Ano_Mes', 'dsc_tipotransacao'])['vl_transacao'].sum().reset_index()
+            df_pivot = df_agrupado.pivot_table(
+                index='Ano_Mes', 
+                columns='dsc_tipotransacao', 
+                values='vl_transacao'
+            ).fillna(0).reset_index()
 
-        # ... (Restante do Bloco A, que já está corrigido para plotagem) ...
-        # (O cálculo do Saldo e a plotagem do gráfico continuam os mesmos)
-        if 'Receita' not in df_pivot.columns:
-            df_pivot['Receita'] = 0.0
-        if 'Despesas' not in df_pivot.columns:
-            df_pivot['Despesas'] = 0.0
-        
-        df_pivot['Saldo'] = df_pivot['Receita'] - df_pivot['Despesas']
+            # Garante as colunas e calcula o Saldo (necessário após pivot)
+            if 'Receita' not in df_pivot.columns:
+                df_pivot['Receita'] = 0.0
+            if 'Despesas' not in df_pivot.columns:
+                df_pivot['Despesas'] = 0.0
+            
+            df_pivot['Saldo'] = df_pivot['Receita'] - df_pivot['Despesas']
 
-        df_pivot = df_pivot.sort_values(by='Ano_Mes')
-        
-        # --- Lógica de Visualização Aprimorada (Barras Relativas + Linha) ---
-        df_pivot_viz = df_pivot.copy()
-        df_pivot_viz['Despesas'] = -df_pivot_viz['Despesas'] 
-        
-        df_long = pd.melt(
-            df_pivot_viz, 
-            id_vars=['Ano_Mes', 'Saldo'], 
-            value_vars=['Receita', 'Despesas'], 
-            var_name='Tipo', 
-            value_name='Valor'
-        )
-        
-        fig_hist = px.bar(
-            df_long, 
-            x='Ano_Mes', 
-            y='Valor', 
-            color='Tipo', 
-            title='Balanço Mensal: Receita e Despesa',
-            height=450,
-            color_discrete_map={'Receita': 'green', 'Despesas': 'red'}
-        )
-        
-        fig_hist.add_scatter(
-            x=df_pivot_viz['Ano_Mes'], 
-            y=df_pivot_viz['Saldo'], 
-            mode='lines+markers', 
-            name='Saldo do Mês',
-            line=dict(color='blue', width=3),
-            marker=dict(size=8, color='blue')
-        )
-        
-        fig_hist.update_layout(barmode='relative', showlegend=True, hovermode="x unified")
-        
-        st.plotly_chart(fig_hist, use_container_width=True)
-    else:
-        st.info("Dados de transação insuficientes para o balanço histórico de 12 meses.")
-
+            # Ordena para exibição
+            df_pivot = df_pivot.sort_values(by='Ano_Mes')
+            
+            # --- Lógica de Visualização Aprimorada (Barras Relativas + Linha) ---
+            df_pivot_viz = df_pivot.copy()
+            # Transforma despesas em valores negativos para que as barras sejam desenhadas abaixo do zero
+            df_pivot_viz['Despesas'] = -df_pivot_viz['Despesas'] 
+            
+            # Cria um DataFrame 'long' para Plotly (Receita e Despesa)
+            df_long = pd.melt(
+                df_pivot_viz, 
+                id_vars=['Ano_Mes', 'Saldo'], 
+                value_vars=['Receita', 'Despesas'], 
+                var_name='Tipo', 
+                value_name='Valor'
+            )
+            
+            # Cria o gráfico de Barras
+            fig_hist = px.bar(
+                df_long, 
+                x='Ano_Mes', 
+                y='Valor', 
+                color='Tipo', 
+                title='Balanço Mensal: Receita e Despesa',
+                height=450,
+                color_discrete_map={'Receita': 'green', 'Despesas': 'red'}
+            )
+            
+            # Adiciona o Saldo como uma linha sobreposta
+            fig_hist.add_scatter(
+                x=df_pivot_viz['Ano_Mes'], 
+                y=df_pivot_viz['Saldo'], 
+                mode='lines+markers', 
+                name='Saldo do Mês',
+                line=dict(color='blue', width=3),
+                marker=dict(size=8, color='blue')
+            )
+            
+            fig_hist.update_layout(barmode='relative', showlegend=True, hovermode="x unified")
+            
+            st.plotly_chart(fig_hist, use_container_width=True)
+        else:
+            st.info("Dados de transação insuficientes para o balanço histórico de 12 meses.")
+            
     st.markdown("---")
     
     # --------------------------------------------------------------------------
@@ -1615,7 +1626,7 @@ def dashboard():
     # --------------------------------------------------------------------------
     st.subheader("Balanço Projetado Receita vs. Despesa (Próximos 12 Meses)")
 
-    # 💡 CORREÇÃO DE ESCOPO: Cálculo das datas do MÊS ANTERIOR (Base para Despesa)
+    # CORREÇÃO DE ESCOPO: Cálculo das datas do MÊS ANTERIOR (Base para Despesa)
     primeiro_dia_mes_anterior = hoje.replace(day=1) - relativedelta(months=1)
     ultimo_dia_mes_anterior = hoje.replace(day=1) - relativedelta(days=1)
 
@@ -1626,11 +1637,10 @@ def dashboard():
         total_despesa_recorrente = 0.0 
 
         # 1. Obter Salário Mais Recente DE CADA USUÁRIO (Projeção de Receita)
-        df_salario = consultar_dados("fact_salario")
         if df_salario.empty:
              raise ValueError("Não há salários registrados para projeção.")
 
-        # 💡 CORREÇÃO FINAL: Agrupa por ID de Usuário para obter a soma do último salário de CADA um
+        # CORREÇÃO: Agrupa por ID de Usuário para obter a soma do último salário de CADA um
         idx_max_data = df_salario.groupby('id_usuario')['dt_recebimento'].idxmax()
         df_ultimos_salarios = df_salario.loc[idx_max_data]
         total_receita_projetada = df_ultimos_salarios['vl_salario'].sum()
@@ -1675,7 +1685,7 @@ def dashboard():
         if 'Despesas' not in df_projecao.columns:
             df_projecao['Despesas'] = 0.0
         
-        # GRÁFICO 2: Balanço Projetado (Formato mais simples por ser projeção)
+        # GRÁFICO 2: Balanço Projetado 
         fig_proj = px.bar(
             df_projecao, 
             x='Ano_Mes', 
