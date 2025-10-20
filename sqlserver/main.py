@@ -1233,15 +1233,34 @@ def editar_transacao():
     # ----------------------------------------------------------------------
     st.subheader("1. Tabela de Transações Registradas")
 
-    # Consulta a tabela de transações
+    # Consulta a tabela de transações (stg_transacoes já deve trazer 'dt_datatransacao')
     df_transacoes = consultar_dados("stg_transacoes")
     
     if df_transacoes.empty:
         st.info("Nenhuma transação registrada para editar.")
         return
 
-    # Renomeação simplificada para o usuário escolher (Incluindo o ID)
-    df_exibicao = df_transacoes.rename(columns={
+    # 💡 LÓGICA DE FILTRO DE DATA (INÍCIO)
+    # 1. Calcula o primeiro dia do mês anterior
+    hoje = datetime.date.today()
+    primeiro_dia_mes_anterior = hoje - relativedelta(months=1)
+    primeiro_dia_mes_anterior = primeiro_dia_mes_anterior.replace(day=1)
+    
+    # 2. Converte a coluna de data para datetime (se ainda não for)
+    # Garante que a coluna de data seja comparável
+    df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
+    
+    # 3. Filtra o DataFrame
+    df_filtrado = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= primeiro_dia_mes_anterior]
+    
+    # Se o DataFrame filtrado estiver vazio
+    if df_filtrado.empty:
+        st.info(f"Nenhuma transação encontrada a partir de {primeiro_dia_mes_anterior.strftime('%d/%m/%Y')}.")
+        return
+    # 💡 FIM DA LÓGICA DE FILTRO
+    
+    # Renomeação simplificada para o usuário escolher (Usando o DF FILTRADO)
+    df_exibicao = df_filtrado.rename(columns={
         'id_transacao': 'ID', # Mantenha o ID visível e em primeiro
         'dt_datatransacao': 'Data',
         'dsc_transacao': 'Descrição',
@@ -1263,7 +1282,7 @@ def editar_transacao():
     # ----------------------------------------------------------------------
     st.subheader("2. Insira o ID para Editar")
     
-    # Lista de IDs disponíveis para seleção no campo (formatado como string para o selectbox)
+    # Lista de IDs disponíveis para seleção no campo (usando o DF FILTRADO)
     lista_ids = [''] + df_exibicao['ID'].astype(str).tolist()
     
     # Permite que o usuário selecione o ID
