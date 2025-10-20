@@ -1716,8 +1716,9 @@ def main():
     # CONTROLE DE FLUXO: Se não estiver logado, exibe apenas a tela de login
     # ----------------------------------------------------------------
     if not st.session_state.logged_in:
-        login_page() # <--- CHAMADA CORRIGIDA
-        return # Interrompe a execução do main() aqui
+        # Nota: A função login_page() deve estar definida no seu código.
+        login_page()
+        return 
     
     # Se estiver logado, continua a execução do menu
     
@@ -1725,40 +1726,70 @@ def main():
     with st.sidebar:
         st.title(f"Menu Principal - Logado como: {st.session_state.login}")
         
-        # Opções principais (Dashboard, Transação, Acerto de Contas, Corrigir Transação)
-        # ... (PRIMEIRA E SEGUNDA LINHAS COM COLUNAS PERMANECEM INALTERADAS) ...
-        # ... (Incluindo os botões 📊 Dashboard, 💵 Transação, 💰 Acerto, 🛠️ Corrigir Transação)
+        # -----------------------------------------------------------------
+        # BOTÕES PRINCIPAIS RESTAURADOS (Dashboard, Transação, Acerto, Corrigir)
+        # -----------------------------------------------------------------
+        
+        # PRIMEIRA LINHA: Dashboard e Transação
+        col1, col2 = st.columns(2) 
+
+        with col1:
+            if st.button("📊 Dashboard", key="btn_dashboard", use_container_width=True):
+                st.session_state.menu_selecionado = "Dashboard"
+        with col2:
+            if st.button("💵 Transação", key="btn_transacao", use_container_width=True):
+                st.session_state.menu_selecionado = "Transação"
+
+        # SEGUNDA LINHA: Acerto de Contas e Corrigir Transação
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            if st.button("💰 Acerto", key="btn_acerto", use_container_width=True):
+                st.session_state.menu_selecionado = "Acerto de Contas"
+        with col4:
+            if st.button("🛠️ Corrigir", key="btn_corrigir", use_container_width=True):
+                st.session_state.menu_selecionado = "Corrigir Transação"
         
         st.subheader("Cadastros (Dimensões)")
         
-        # 💡 NOVO BLOCO: Opções de cadastro (dimensões) com Emojis
+        # Opções de cadastro (dimensões) com Emojis
         opcoes_cadastro = {
-            "💳 Tipos de Transação": None, # Tipo de documento/transação
-            "🏷️ Categorias": None,        # Agrupamento (Ex: Lazer, Veículo)
-            "📝 Subcategorias": None,     # Detalhe (Ex: Cinema, Combustível)
-            "👥 Usuários": None,          # Quem usa o sistema/divisão
-            "💰 Salário": None,           # Registro de Receita
+            "💳 Tipos de Transação": None, 
+            "🏷️ Categorias": None,        
+            "📝 Subcategorias": None,     
+            "👥 Usuários": None,          
+            "💰 Salário": None,           
         }
         
-        # O loop agora usa o nome com o emoji
         for nome_opcao, _ in opcoes_cadastro.items():
-            # A chave 'key' ainda é limpa se você quiser evitar caracteres especiais
-            key_limpa = nome_opcao.split()[1] # Pega o nome sem o emoji (ex: 'Tipos')
+            # Cria uma chave de botão limpa (ex: 'Tipos')
+            key_limpa = nome_opcao.split()[1]
             if st.button(nome_opcao, key=f"btn_cadastro_{key_limpa}", use_container_width=True):
-                # É CRÍTICO: st.session_state.menu_selecionado deve ser o NOME SEM O EMOJI
-                # para que o bloco 'elif' abaixo encontre a função correta.
-                
-                # Vamos mapear:
-                # '💳 Tipos de Transação' -> 'Tipos de Transação'
+                # Armazena o nome LIMPO no estado para que o bloco de execução abaixo o encontre.
                 nome_limpo_para_funcao = nome_opcao.split(' ', 1)[1] 
                 st.session_state.menu_selecionado = nome_limpo_para_funcao
 
         # Botões de Logout/Cache
-        # ... (restante da sidebar inalterada) ...
+        st.markdown("---")
+        # A função limpar_cache_dados deve estar definida
+        if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados):
+             pass 
+        
+        # Botão de Logout
+        if st.button("Sair (Logout)", key="btn_logout"):
+            st.session_state.logged_in = False
+            # Limpa as variáveis de sessão sensíveis
+            if 'id_usuario_logado' in st.session_state:
+                 del st.session_state.id_usuario_logado
+            if 'login' in st.session_state:
+                 del st.session_state.login
+            st.rerun() 
 
     # --- 2. EXIBIÇÃO DO FORMULÁRIO SELECIONADO ---
     opcao_atual = st.session_state.menu_selecionado
     
+    # Nota: Todas as funções de formulário (dashboard, formulario_transacao, etc.)
+    # devem estar definidas no seu código.
     if opcao_atual == "Dashboard":
         dashboard()
     elif opcao_atual == "Transação":
