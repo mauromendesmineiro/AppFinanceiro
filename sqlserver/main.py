@@ -1563,35 +1563,20 @@ def dashboard():
     st.subheader("Balanço Projetado Receita vs. Despesa (Próximos 12 Meses)")
 
     try:
-        # 1. Obter Salário Mais Recente (Projeção de Receita)
+        # 1. Obter Salário Mais Recente DE CADA USUÁRIO (Projeção de Receita)
         df_salario = consultar_dados("fact_salario")
         if df_salario.empty:
              raise ValueError("Não há salários registrados para projeção.")
 
-        ultimo_salario = df_salario.sort_values(by='dt_recebimento', ascending=False)['vl_salario'].iloc[0]
+        # 💡 CORREÇÃO AQUI: Agrupamos pelo nome do usuário e pegamos o valor mais recente
+        # 1.1 Encontra o salário mais recente de cada usuário
+        idx_max_data = df_salario.groupby('dsc_nomeusuario')['dt_recebimento'].idxmax()
+        df_ultimos_salarios = df_salario.loc[idx_max_data]
         
-        # 2. Obter Despesas Recorrentes (Projeção de Despesa)
-        # 💡 NOVO CÁLCULO: Baseado no total de despesas do MÊS ANTERIOR COMPLETO
-        hoje = datetime.date.today()
-        # Primeiro dia do mês anterior (Ex: 01/09/2025)
-        primeiro_dia_mes_anterior = hoje.replace(day=1) - relativedelta(months=1)
-        # Último dia do mês anterior (Ex: 30/09/2025)
-        ultimo_dia_mes_anterior = hoje.replace(day=1) - relativedelta(days=1)
-        
-        df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
-        
-        # Filtra transações apenas do MÊS ANTERIOR, apenas DESPESAS
-        df_recorrentes_base = df_transacoes[
-            (df_transacoes['dt_datatransacao'].dt.date >= primeiro_dia_mes_anterior) &
-            (df_transacoes['dt_datatransacao'].dt.date <= ultimo_dia_mes_anterior) &
-            (df_transacoes['dsc_tipotransacao'] == 'Despesas')
-        ]
-        
-        if df_recorrentes_base.empty:
-            st.warning(f"Não há despesas registradas no mês de {primeiro_dia_mes_anterior.strftime('%m/%Y')} para projeção. Projetando apenas salário.")
-            total_despesa_recorrente = 0
-        else:
-            total_despesa_recorrente = df_recorrentes_base['vl_transacao'].sum()
+        # 1.2 Soma o total desses últimos salários
+        total_receita_projetada = df_ultimos_salarios['vl_salario'].sum()
+
+        # ... (Restante do código para calcular despesas recorrentes) ...
         
         # 3. Gerar Projeção
         data_base_projecao = hoje.replace(day=1) + relativedelta(months=1)
@@ -1602,9 +1587,10 @@ def dashboard():
         for mes_data in meses_projecao:
             projecao_data.append({
                 'Ano_Mes': mes_data.strftime('%Y-%m'),
-                'Receita': ultimo_salario,
+                # 💡 USA A SOMA CALCULADA AQUI
+                'Receita': total_receita_projetada, 
                 'Despesas': total_despesa_recorrente,
-                'Saldo': ultimo_salario - total_despesa_recorrente
+                'Saldo': total_receita_projetada - total_despesa_recorrente
             })
             
         df_projecao = pd.DataFrame(projecao_data)
