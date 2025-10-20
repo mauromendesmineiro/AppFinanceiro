@@ -3,5 +3,4 @@ pandas
 plotly
 python-dateutil
 psycopg2-binary
-plotly.colors
 numpy
