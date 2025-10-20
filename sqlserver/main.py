@@ -1562,23 +1562,31 @@ def dashboard():
     # --------------------------------------------------------------------------
     st.subheader("Balanço Projetado Receita vs. Despesa (Próximos 12 Meses)")
 
+    # 💡 CORREÇÃO AQUI: Calcula as datas do MÊS ANTERIOR (Base para Despesa)
+    hoje = datetime.date.today()
+    # Primeiro dia do mês anterior (Ex: 01/09/2025)
+    primeiro_dia_mes_anterior = hoje.replace(day=1) - relativedelta(months=1)
+    # Último dia do mês anterior (Ex: 30/09/2025)
+    ultimo_dia_mes_anterior = hoje.replace(day=1) - relativedelta(days=1)
+
+
     try:
-        # 💡 CORREÇÃO AQUI: Inicializa as variáveis de soma
+        # Inicializa as variáveis de soma
         total_receita_projetada = 0.0 
-        total_despesa_recorrente = 0.0 # <-- GARANTE QUE A VARIÁVEL SEMPRE EXISTE
+        total_despesa_recorrente = 0.0 
 
         # 1. Obter Salário Mais Recente DE CADA USUÁRIO (Projeção de Receita)
         df_salario = consultar_dados("fact_salario")
         if df_salario.empty:
-             raise ValueError("Não há salários registrados para projeção.")
+                raise ValueError("Não há salários registrados para projeção.")
 
-        # ... (Lógica para calcular total_receita_projetada, que está correta) ...
+        # ... (Lógica para calcular total_receita_projetada, que está OK) ...
         idx_max_data = df_salario.groupby('id_usuario')['dt_recebimento'].idxmax()
         df_ultimos_salarios = df_salario.loc[idx_max_data]
         total_receita_projetada = df_ultimos_salarios['vl_salario'].sum()
 
         # 2. Obter Despesas Recorrentes (Projeção de Despesa)
-        # ... (Lógica de data) ...
+        # df_transacoes já deve estar definido e com a coluna 'dt_datatransacao' convertida
         
         # Filtra transações apenas do MÊS ANTERIOR, apenas DESPESAS
         df_recorrentes_base = df_transacoes[
@@ -1586,10 +1594,11 @@ def dashboard():
             (df_transacoes['dt_datatransacao'].dt.date <= ultimo_dia_mes_anterior) &
             (df_transacoes['dsc_tipotransacao'] == 'Despesas')
         ]
-                
+            
         if df_recorrentes_base.empty:
             st.warning(f"Não há despesas registradas no mês de {primeiro_dia_mes_anterior.strftime('%m/%Y')} para projeção. Projetando apenas salário.")
-            total_despesa_recorrente = 0
+            # total_despesa_recorrente já é 0.0, mas reforçamos para clareza
+            total_despesa_recorrente = 0 
         else:
             total_despesa_recorrente = df_recorrentes_base['vl_transacao'].sum()
         
