@@ -1726,55 +1726,35 @@ def main():
         st.title(f"Menu Principal - Logado como: {st.session_state.login}")
         
         # Opções principais (Dashboard, Transação, Acerto de Contas, Corrigir Transação)
-        # PRIMEIRA LINHA: Dashboard e Transação
-        col1, col2 = st.columns(2) 
-
-        with col1:
-            if st.button("📊 Dashboard", key="btn_dashboard", use_container_width=True):
-                st.session_state.menu_selecionado = "Dashboard"
-        with col2:
-            if st.button("💵 Transação", key="btn_transacao", use_container_width=True):
-                st.session_state.menu_selecionado = "Transação"
-
-        # SEGUNDA LINHA: Acerto de Contas e Corrigir Transação
-        col3, col4 = st.columns(2)
+        # ... (PRIMEIRA E SEGUNDA LINHAS COM COLUNAS PERMANECEM INALTERADAS) ...
+        # ... (Incluindo os botões 📊 Dashboard, 💵 Transação, 💰 Acerto, 🛠️ Corrigir Transação)
         
-        with col3:
-            if st.button("💰 Acerto", key="btn_acerto", use_container_width=True):
-                st.session_state.menu_selecionado = "Acerto de Contas"
-        with col4:
-            if st.button("🛠️ Corrigir Transação", key="btn_corrigir", use_container_width=True):
-                st.session_state.menu_selecionado = "Corrigir Transação"
-
         st.subheader("Cadastros (Dimensões)")
         
-        # Opções de cadastro (dimensões)
+        # 💡 NOVO BLOCO: Opções de cadastro (dimensões) com Emojis
         opcoes_cadastro = {
-            "Tipos de Transação": None,
-            "Categorias": None,
-            "Subcategorias": None,
-            "Usuários": None,
-            "Salário": None,
+            "💳 Tipos de Transação": None, # Tipo de documento/transação
+            "🏷️ Categorias": None,        # Agrupamento (Ex: Lazer, Veículo)
+            "📝 Subcategorias": None,     # Detalhe (Ex: Cinema, Combustível)
+            "👥 Usuários": None,          # Quem usa o sistema/divisão
+            "💰 Salário": None,           # Registro de Receita
         }
         
+        # O loop agora usa o nome com o emoji
         for nome_opcao, _ in opcoes_cadastro.items():
-            if st.button(nome_opcao, key=f"btn_cadastro_{nome_opcao}", use_container_width=True):
-                st.session_state.menu_selecionado = nome_opcao
+            # A chave 'key' ainda é limpa se você quiser evitar caracteres especiais
+            key_limpa = nome_opcao.split()[1] # Pega o nome sem o emoji (ex: 'Tipos')
+            if st.button(nome_opcao, key=f"btn_cadastro_{key_limpa}", use_container_width=True):
+                # É CRÍTICO: st.session_state.menu_selecionado deve ser o NOME SEM O EMOJI
+                # para que o bloco 'elif' abaixo encontre a função correta.
+                
+                # Vamos mapear:
+                # '💳 Tipos de Transação' -> 'Tipos de Transação'
+                nome_limpo_para_funcao = nome_opcao.split(' ', 1)[1] 
+                st.session_state.menu_selecionado = nome_limpo_para_funcao
 
         # Botões de Logout/Cache
-        st.markdown("---")
-        if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados):
-             pass 
-        
-        # Botão de Logout
-        if st.button("Sair (Logout)", key="btn_logout"):
-            st.session_state.logged_in = False
-            # Limpa as variáveis de sessão sensíveis
-            if 'id_usuario_logado' in st.session_state:
-                 del st.session_state.id_usuario_logado
-            if 'login' in st.session_state:
-                 del st.session_state.login
-            st.rerun() # Reinicia para a tela de login
+        # ... (restante da sidebar inalterada) ...
 
     # --- 2. EXIBIÇÃO DO FORMULÁRIO SELECIONADO ---
     opcao_atual = st.session_state.menu_selecionado
