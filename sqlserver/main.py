@@ -1448,25 +1448,25 @@ def autenticar_usuario(login, senha):
             
     return usuario_info # Retorna o dicionário com as informações do usuário ou {}
 
-def login_page(): # <--- NOME DA FUNÇÃO CORRIGIDO PARA O SEU PADRÃO
+def login_page(): 
     st.title("Acesso ao Sistema")
     
     with st.form("login_form"):
-        login_input = st.text_input("Login (Usuário)", key="login_key")
-        senha_input = st.text_input("Senha", type="password", key="senha_key")
+        # Usamos chaves diferentes para evitar conflito com 'login' na session_state
+        login_input = st.text_input("Login (Usuário)", key="login_input_key") 
+        senha_input = st.text_input("Senha", type="password", key="senha_input_key")
         
         submitted = st.form_submit_button("Entrar")
         
         if submitted:
             conn = None
             try:
-                # get_connection() deve estar definida para se conectar ao banco de dados
+                # get_connection() deve estar definida
                 conn = get_connection() 
                 cursor = conn.cursor()
                 
-                # Consulta parametrizada para segurança
-                # Assumindo que 'dsc_senha' armazena a senha (texto simples ou hash, dependendo da sua DB)
-                query = sql.SQL("SELECT id_usuario, dsc_nome FROM dim_usuario WHERE dsc_login = %s AND dsc_senha = %s")
+                # CORREÇÃO CRÍTICA: MUDANÇA DE dsc_login PARA login E dsc_senha PARA senha
+                query = sql.SQL("SELECT id_usuario, dsc_nome FROM dim_usuario WHERE login = %s AND senha = %s")
                 cursor.execute(query, (login_input, senha_input))
                 
                 user_data = cursor.fetchone()
@@ -1484,6 +1484,8 @@ def login_page(): # <--- NOME DA FUNÇÃO CORRIGIDO PARA O SEU PADRÃO
                     st.error("Login ou senha incorretos. Tente novamente.")
                     
             except Exception as e:
+                # O erro de coluna (ex: column "dsc_login" does not exist) será exibido aqui.
+                # Agora que corrigimos, deve ser um erro de credenciais se não funcionar.
                 st.error(f"Erro ao tentar conectar ou consultar o banco de dados. Verifique a conexão e as credenciais: {e}")
             finally:
                 if conn is not None:
