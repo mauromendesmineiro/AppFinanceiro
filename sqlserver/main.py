@@ -1563,26 +1563,37 @@ def dashboard():
     st.subheader("Balanço Projetado Receita vs. Despesa (Próximos 12 Meses)")
 
     try:
+        # 💡 CORREÇÃO AQUI: Inicializa as variáveis de soma
+        total_receita_projetada = 0.0 
+        total_despesa_recorrente = 0.0 # <-- GARANTE QUE A VARIÁVEL SEMPRE EXISTE
+
         # 1. Obter Salário Mais Recente DE CADA USUÁRIO (Projeção de Receita)
-        # Consulta a tabela base 'fact_salario'
-        df_salario = consultar_dados("fact_salario") 
+        df_salario = consultar_dados("fact_salario")
         if df_salario.empty:
              raise ValueError("Não há salários registrados para projeção.")
 
-        # 💡 CORREÇÃO AQUI: Agrupamos por 'id_usuario' e pegamos o valor mais recente
-        # 1.1 Encontra o ID da linha com a data de recebimento mais recente para CADA 'id_usuario'
+        # ... (Lógica para calcular total_receita_projetada, que está correta) ...
         idx_max_data = df_salario.groupby('id_usuario')['dt_recebimento'].idxmax()
         df_ultimos_salarios = df_salario.loc[idx_max_data]
-        
-        # 1.2 Soma o total desses últimos salários
         total_receita_projetada = df_ultimos_salarios['vl_salario'].sum()
 
-        # ... (Restante do código para calcular despesas recorrentes) ...
+        # 2. Obter Despesas Recorrentes (Projeção de Despesa)
+        # ... (Lógica de data) ...
+        
+        # Filtra transações apenas do MÊS ANTERIOR, apenas DESPESAS
+        df_recorrentes_base = df_transacoes[
+            # ... (condições de filtro) ...
+        ]
+        
+        if df_recorrentes_base.empty:
+            st.warning(f"Não há despesas registradas no mês de {primeiro_dia_mes_anterior.strftime('%m/%Y')} para projeção. Projetando apenas salário.")
+            total_despesa_recorrente = 0
+        else:
+            total_despesa_recorrente = df_recorrentes_base['vl_transacao'].sum()
         
         # 3. Gerar Projeção
         data_base_projecao = hoje.replace(day=1) + relativedelta(months=1)
         meses_projecao = gerar_meses_futuros(data_base_projecao, 12)
-        
         # Cria DataFrame de Projeção
         projecao_data = []
         for mes_data in meses_projecao:
