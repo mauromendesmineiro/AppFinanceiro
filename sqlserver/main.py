@@ -1693,18 +1693,18 @@ def dashboard():
     # -----------------------------------------------------------------
     today = datetime.date.today()
     
-    # 1. VISÃO PASSADA (13 meses: OUT/2024 até o mês atual)
-    start_date_passado = today.replace(day=1) - relativedelta(months=12) # Inicia 13 meses atrás
+    # 1. VISÃO PASSADA (13 meses: OUT/2024 até o mês atual - Out/2025)
+    start_date_passado = today.replace(day=1) - relativedelta(months=12)
     end_limit_passado = today.replace(day=1) + relativedelta(months=1) 
     
     meses_passado = [
         (today.replace(day=1) - relativedelta(months=i)).strftime('%Y-%m')
-        for i in range(12, -1, -1) # 13 meses (de 12 até 0)
+        for i in range(12, -1, -1)
     ]
     
     df_passado_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_passado)].copy()
     
-    # 2. VISÃO FUTURA (12 meses)
+    # 2. VISÃO FUTURA (12 meses: Próximo mês - Nov/2025 até Out/2026)
     start_date_futuro = today.replace(day=1) + relativedelta(months=1)
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
@@ -1720,8 +1720,7 @@ def dashboard():
     # GERAÇÃO DO DATAFRAME DE SALDO (Passado e Futuro)
     # -----------------------------------------------------------------
     def gerar_df_saldo(df, meses_ref):
-        if df.empty:
-            return pd.DataFrame()
+        if df.empty: return pd.DataFrame()
         df_pivot = df.pivot_table(index='ano_mes', columns='Tipo', values='Valor', aggfunc='sum').fillna(0)
         df_pivot['Receita'] = df_pivot.get('Receita', 0) + df_pivot.get('Receita (Salário)', 0)
         df_pivot['Despesa'] = df_pivot.get('Despesa', 0) 
@@ -1732,13 +1731,7 @@ def dashboard():
         return df_saldo_longo
     
     df_saldo_passado_final = gerar_df_saldo(df_passado_saldo, meses_ref=sorted(meses_passado))
-    
-    # Futuro (usa a projeção)
-    df_saldo_futuro_final = projetar_dados_futuro(
-        df_passado_saldo, 
-        df_futuro_saldo, 
-        meses_futuro_ref=sorted(meses_futuro)
-    )
+    df_saldo_futuro_final = projetar_dados_futuro(df_passado_saldo, df_futuro_saldo, meses_futuro_ref=sorted(meses_futuro))
 
 
     # -----------------------------------------------------------------
@@ -1749,10 +1742,7 @@ def dashboard():
     with col_saldo_passado:
         st.subheader("Balanço Mensal (Passado)")
         if not df_saldo_passado_final.empty:
-            fig3 = criar_grafico_saldo_combinado(
-                df_saldo_passado_final,
-                'Receitas, Despesas e Saldo (Últimos 13 Meses)'
-            )
+            fig3 = criar_grafico_saldo_combinado(df_saldo_passado_final, 'Receitas, Despesas e Saldo (Últimos 13 Meses)')
             st.plotly_chart(fig3, use_container_width=True)
         else:
             st.info("Dados de balanço insuficientes no período passado.")
@@ -1760,10 +1750,7 @@ def dashboard():
     with col_saldo_futuro:
         st.subheader("Projeção de Balanço (Futuro)")
         if not df_saldo_futuro_final.empty:
-            fig4 = criar_grafico_saldo_combinado(
-                df_saldo_futuro_final,
-                'Projeção de Balanço (Próximos 12 Meses)'
-            )
+            fig4 = criar_grafico_saldo_combinado(df_saldo_futuro_final, 'Projeção de Balanço (Próximos 12 Meses)')
             st.plotly_chart(fig4, use_container_width=True)
         else:
             st.info("Nenhuma projeção de transação disponível para o período futuro.")
@@ -1773,7 +1760,6 @@ def dashboard():
     # -----------------------------------------------------------
     st.markdown("---") 
 
-    # NOVO LAYOUT: 3 colunas
     col_grafico1, col_grafico2, col_grafico5 = st.columns(3)
     
     # -----------------------------------------------------------------
@@ -1845,7 +1831,7 @@ def dashboard():
             st.info("Nenhuma transação agendada/registrada para o período futuro.")
 
     # -----------------------------------------------------------------
-    # NOVO GRÁFICO 5: Acumulado por Categoria (Passado) - Coluna 3
+    # Gráfico 5: Despesas Acumuladas por Ano (Anual) - Coluna 3
     # -----------------------------------------------------------------
     with col_grafico5:
         st.subheader("Despesas Acumuladas por Ano")
@@ -1856,38 +1842,27 @@ def dashboard():
         ].copy()
         
         if not df_despesas_acumuladas_anual.empty:
-            # 1. Extrair o Ano da transação
             df_despesas_acumuladas_anual['Ano'] = df_despesas_acumuladas_anual['dt_datatransacao'].dt.year
             
-            # 2. Agrupar e somar por Ano e Categoria
             df_agregado_anual = df_despesas_acumuladas_anual.groupby(['Ano', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
-            df_agregado_anual['Ano'] = df_agregado_anual['Ano'].astype(str) # Converter para string para o eixo X categórico
+            df_agregado_anual['Ano'] = df_agregado_anual['Ano'].astype(str)
             
-            # --- NOVO AJUSTE DE ORDENAÇÃO DE CATEGORIAS (para cores) ---
-            # Calcular a ordem das categorias pela soma total (para consistência das cores na pilha)
+            # Ajuste de Ordenação da Pilha (Cores)
             categoria_ordenada_acumulada = df_agregado_anual.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
             
-            # 3. Gráfico de Barras Empilhadas
             fig5 = px.bar(
                 df_agregado_anual,
                 x='Ano',
                 y='vl_transacao',
                 color='dsc_categoriatransacao',
-                barmode='stack', # Para empilhar as categorias dentro da barra do ano
+                barmode='stack',
                 title='Distribuição de Despesas por Categoria (Acumulado Anual)',
                 labels={'vl_transacao': 'Valor Acumulado (R$)', 'dsc_categoriatransacao': 'Categoria'},
-                # --- NOVO AJUSTE DE PALETA DE CORES ---
                 color_discrete_sequence=PALETA_CORES, 
-                # --- NOVO AJUSTE DE ORDENAÇÃO DAS CORES NA PILHA ---
                 category_orders={"dsc_categoriatransacao": categoria_ordenada_acumulada}
             )
             
-            # --- AJUSTE DE LAYOUT PARA ORDENAR AS BARRAS (ANOS) POR TOTAL ACUMULADO ---
-            # Para ordenar as barras (eixo X) decrescentemente pelo total, o Plotly exige um passo extra.
-            # No entanto, a ordenação por ano (2023, 2024, 2025) é mais comum.
-            # Se quiser ordenar DECRESCENTEMENTE o Eixo X (Ano), descomentar:
-            # fig5.update_xaxes(categoryorder='total descending') 
-
+            # Ordenação do Eixo X (Ano) é mantida cronológica (2023, 2024, 2025)
             fig5.update_layout(
                 xaxis_title='Ano', 
                 yaxis_title='Valor Acumulado',
@@ -1897,6 +1872,128 @@ def dashboard():
             st.plotly_chart(fig5, use_container_width=True)
         else:
             st.info("Nenhuma despesa registrada para o cálculo acumulado por ano.")
+
+    # -----------------------------------------------------------
+    # TERCEIRA LINHA DE GRÁFICOS (Evolução por Subcategoria + Acumulado)
+    # -----------------------------------------------------------
+    st.markdown("---") 
+
+    col_grafico6, col_grafico7, col_grafico8 = st.columns(3)
+    
+    # -----------------------------------------------------------------
+    # Gráfico 6: Evolução Mensal por Subcategoria (Passado) - Coluna 1
+    # -----------------------------------------------------------------
+    with col_grafico6:
+        st.subheader("Evolução Mensal por Subcategoria")
+        
+        df_passado_subcategoria = df_transacoes[
+            (df_transacoes['dt_datatransacao'].dt.date >= start_date_passado) &
+            (df_transacoes['dt_datatransacao'].dt.date < end_limit_passado)
+        ].copy()
+        
+        if not df_passado_subcategoria.empty:
+            df_passado_subcategoria['ano_mes'] = df_passado_subcategoria['dt_datatransacao'].dt.to_period('M').astype(str)
+            # Agrupar por Mês e Subcategoria
+            df_agregado_mensal_sub = df_passado_subcategoria.groupby(['ano_mes', 'dsc_subcategoriatransacao'])['vl_transacao'].sum().reset_index()
+            
+            meses_ordenados = sorted(df_agregado_mensal_sub['ano_mes'].unique())
+            # Ordenar subcategorias para consistência de cores
+            subcategoria_ordenada = df_agregado_mensal_sub.groupby('dsc_subcategoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
+            
+            fig6 = px.bar(
+                df_agregado_mensal_sub,
+                x='ano_mes',
+                y='vl_transacao',
+                color='dsc_subcategoriatransacao',
+                title='Passado (Últimos 13 Meses)',
+                labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
+                category_orders={"ano_mes": meses_ordenados, "dsc_subcategoriatransacao": subcategoria_ordenada},
+                color_discrete_sequence=PALETA_CORES 
+            )
+            fig6.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Subcategoria')
+            fig6.update_yaxes(tickformat=".2f") 
+            st.plotly_chart(fig6, use_container_width=True)
+        else:
+            st.info("Dados insuficientes de subcategorias no período passado.")
+
+    # -----------------------------------------------------------------
+    # Gráfico 7: Transações por Subcategoria (Futuro) - Coluna 2
+    # -----------------------------------------------------------------
+    with col_grafico7:
+        st.subheader("Transações Agendadas por Subcategoria")
+        
+        df_futuro_subcategoria = df_transacoes[
+            (df_transacoes['dt_datatransacao'].dt.date >= start_date_futuro) &
+            (df_transacoes['dt_datatransacao'].dt.date < end_date_futuro)
+        ].copy()
+        
+        if not df_futuro_subcategoria.empty:
+            df_futuro_subcategoria['ano_mes'] = df_futuro_subcategoria['dt_datatransacao'].dt.to_period('M').astype(str)
+            # Agrupar por Mês e Subcategoria
+            df_agregado_futuro_sub = df_futuro_subcategoria.groupby(['ano_mes', 'dsc_subcategoriatransacao'])['vl_transacao'].sum().reset_index()
+            
+            meses_futuros_ordenados = sorted(df_agregado_futuro_sub['ano_mes'].unique())
+            subcategoria_futura_ordenada = df_agregado_futuro_sub.groupby('dsc_subcategoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
+            
+            fig7 = px.bar(
+                df_agregado_futuro_sub,
+                x='ano_mes',
+                y='vl_transacao',
+                color='dsc_subcategoriatransacao',
+                title='Futuro (Próximos 12 Meses)',
+                labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
+                category_orders={"ano_mes": meses_futuros_ordenados, "dsc_subcategoriatransacao": subcategoria_futura_ordenada},
+                color_discrete_sequence=PALETA_CORES 
+            )
+            fig7.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Subcategoria')
+            fig7.update_yaxes(tickformat=".2f")
+            st.plotly_chart(fig7, use_container_width=True)
+        else:
+            st.info("Nenhuma transação agendada/registrada por subcategoria para o período futuro.")
+
+    # -----------------------------------------------------------------
+    # Gráfico 8: Despesas Acumuladas por Subcategoria (Anual) - Coluna 3
+    # -----------------------------------------------------------------
+    with col_grafico8:
+        st.subheader("Despesas Acumuladas por Ano (Subcategoria)")
+        
+        df_despesas_acumuladas_anual_sub = df_transacoes[
+            df_transacoes['dsc_tipotransacao'] == 'Despesas'
+        ].copy()
+        
+        if not df_despesas_acumuladas_anual_sub.empty:
+            df_despesas_acumuladas_anual_sub['Ano'] = df_despesas_acumuladas_anual_sub['dt_datatransacao'].dt.year
+            
+            # Agrupar por Ano e Subcategoria
+            df_agregado_anual_sub = df_despesas_acumuladas_anual_sub.groupby(['Ano', 'dsc_subcategoriatransacao'])['vl_transacao'].sum().reset_index()
+            df_agregado_anual_sub['Ano'] = df_agregado_anual_sub['Ano'].astype(str)
+            
+            # Ajuste de Ordenação da Pilha (Cores)
+            subcategoria_ordenada_acumulada = df_agregado_anual_sub.groupby('dsc_subcategoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
+            
+            # Utilizar uma paleta maior, pois há muitas subcategorias (Dark24 é bom para isso)
+            fig8 = px.bar(
+                df_agregado_anual_sub,
+                x='Ano',
+                y='vl_transacao',
+                color='dsc_subcategoriatransacao',
+                barmode='stack',
+                title='Distribuição de Despesas por Subcategoria (Anual)',
+                labels={'vl_transacao': 'Valor Acumulado (R$)', 'dsc_subcategoriatransacao': 'Subcategoria'},
+                color_discrete_sequence=px.colors.qualitative.Dark24, # Paleta expandida
+                category_orders={"dsc_subcategoriatransacao": subcategoria_ordenada_acumulada}
+            )
+            
+            fig8.update_layout(
+                xaxis_title='Ano', 
+                yaxis_title='Valor Acumulado',
+                legend_title='Subcategoria',
+                legend=dict(font=dict(size=10)) # Reduz o tamanho da legenda devido ao número de itens
+            )
+            fig8.update_yaxes(tickformat=".2f")
+            st.plotly_chart(fig8, use_container_width=True)
+        else:
+            st.info("Nenhuma despesa registrada por subcategoria para o cálculo acumulado por ano.")
 
 def main():
     # Inicializa o estado de login
