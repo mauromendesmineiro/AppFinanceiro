@@ -1571,17 +1571,30 @@ def dashboard():
         ultimo_salario = df_salario.sort_values(by='dt_recebimento', ascending=False)['vl_salario'].iloc[0]
         
         # 2. Obter Despesas Recorrentes (Projeção de Despesa)
-        # ASSUME que existe uma tabela/view chamada vw_despesas_recorrentes
-        df_recorrentes = consultar_dados("vw_despesas_recorrentes")
-        if df_recorrentes.empty:
-            st.warning("Não há despesas recorrentes para projeção. Projetando apenas salário.")
+        # 💡 NOVO CÁLCULO: Baseado no total de despesas do MÊS ANTERIOR COMPLETO
+        hoje = datetime.date.today()
+        # Primeiro dia do mês anterior (Ex: 01/09/2025)
+        primeiro_dia_mes_anterior = hoje.replace(day=1) - relativedelta(months=1)
+        # Último dia do mês anterior (Ex: 30/09/2025)
+        ultimo_dia_mes_anterior = hoje.replace(day=1) - relativedelta(days=1)
+        
+        df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
+        
+        # Filtra transações apenas do MÊS ANTERIOR, apenas DESPESAS
+        df_recorrentes_base = df_transacoes[
+            (df_transacoes['dt_datatransacao'].dt.date >= primeiro_dia_mes_anterior) &
+            (df_transacoes['dt_datatransacao'].dt.date <= ultimo_dia_mes_anterior) &
+            (df_transacoes['dsc_tipotransacao'] == 'Despesas')
+        ]
+        
+        if df_recorrentes_base.empty:
+            st.warning(f"Não há despesas registradas no mês de {primeiro_dia_mes_anterior.strftime('%m/%Y')} para projeção. Projetando apenas salário.")
             total_despesa_recorrente = 0
         else:
-            # Assumimos que esta view retorna o total das despesas recorrentes
-            total_despesa_recorrente = df_recorrentes['vl_transacao'].sum()
+            total_despesa_recorrente = df_recorrentes_base['vl_transacao'].sum()
         
         # 3. Gerar Projeção
-        data_base_projecao = primeiro_dia_mes_atual + relativedelta(months=1)
+        data_base_projecao = hoje.replace(day=1) + relativedelta(months=1)
         meses_projecao = gerar_meses_futuros(data_base_projecao, 12)
         
         # Cria DataFrame de Projeção
@@ -1596,6 +1609,12 @@ def dashboard():
             
         df_projecao = pd.DataFrame(projecao_data)
         
+        # 💡 GARANTE COLUNAS para o Plotly (segurança)
+        if 'Receita' not in df_projecao.columns:
+            df_projecao['Receita'] = 0.0
+        if 'Despesas' not in df_projecao.columns:
+            df_projecao['Despesas'] = 0.0
+        
         # GRÁFICO 2: Balanço Projetado
         fig_proj = px.bar(
             df_projecao, 
@@ -1609,7 +1628,8 @@ def dashboard():
         st.plotly_chart(fig_proj, use_container_width=True)
 
     except (ValueError, KeyError, TypeError) as e:
-        st.error(f"Erro ao calcular a projeção: {e}. Verifique se as tabelas fact_salario e vw_despesas_recorrentes estão populadas e se os nomes das colunas estão corretos.")
+        # Altera a mensagem de erro para refletir a nova lógica
+        st.error(f"Erro ao calcular a projeção: {e}. Verifique se a tabela fact_salario está populada e se os nomes das colunas estão corretos.")
         
     st.markdown("---")
 
