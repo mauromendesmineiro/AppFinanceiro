@@ -2,6 +2,7 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 import datetime
+from dateutil.relativedelta import relativedelta
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
