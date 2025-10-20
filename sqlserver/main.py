@@ -1494,9 +1494,7 @@ def dashboard():
     
     # 1. CONSULTA DE DADOS
     try:
-        # Consulta de transações (Despesas e Receitas agendadas)
         df_transacoes = consultar_dados("stg_transacoes") 
-        # Consulta de salários (Principal fonte de Receita)
         df_salario = consultar_dados("fact_salario")
         
     except Exception as e:
@@ -1517,14 +1515,20 @@ def dashboard():
         df_transacoes_tipo = df_transacoes.groupby(['dt_datatransacao', 'dsc_tipotransacao'])['vl_transacao'].sum().reset_index()
         df_transacoes_tipo = df_transacoes_tipo.rename(columns={'vl_transacao': 'Valor'})
         df_transacoes_tipo['ano_mes'] = df_transacoes_tipo['dt_datatransacao'].dt.to_period('M').astype(str)
-        # Manter apenas Receita e Despesa na coluna Tipo
-        df_transacoes_tipo = df_transacoes_tipo[df_transacoes_tipo['dsc_tipotransacao'].isin(['Receita', 'Despesa'])].rename(columns={'dsc_tipotransacao': 'Tipo'})
+        
+        # CORREÇÃO: Filtrar por 'Despesas' e 'Receita' (valores da sua tabela)
+        df_transacoes_tipo = df_transacoes_tipo[df_transacoes_tipo['dsc_tipotransacao'].isin(['Receita', 'Despesas'])].copy()
+
+        # Renomear os tipos para o singular para o processamento de saldo (Despesa e Receita)
+        df_transacoes_tipo['Tipo'] = df_transacoes_tipo['dsc_tipotransacao'].replace({'Despesas': 'Despesa', 'Receita': 'Receita'})
+        
+        # Selecionar as colunas finais
+        df_transacoes_tipo = df_transacoes_tipo[['ano_mes', 'Tipo', 'Valor']]
     else:
         df_transacoes_tipo = pd.DataFrame(columns=['ano_mes', 'Tipo', 'Valor'])
 
     # 2. Preparar df_salario (Receitas)
     if not df_salario.empty:
-        # CORREÇÃO APLICADA: Usar a coluna 'dt_recebimento'
         df_salario['dt_recebimento'] = pd.to_datetime(df_salario['dt_recebimento']) 
         
         # Agrupar a soma dos salários por mês
@@ -1532,7 +1536,7 @@ def dashboard():
         
         df_salario_agregado['ano_mes'] = df_salario_agregado['dt_recebimento'].astype(str) 
         df_salario_agregado = df_salario_agregado.rename(columns={'vl_salario': 'Valor'})
-        df_salario_agregado['Tipo'] = 'Receita (Salário)'
+        df_salario_agregado['Tipo'] = 'Receita (Salário)' # Tipo diferente para ser somado em 'gerar_df_saldo'
         
         df_salario_final = df_salario_agregado[['ano_mes', 'Tipo', 'Valor']].copy()
     else:
@@ -1562,7 +1566,7 @@ def dashboard():
     
     meses_passado = [
         (today.replace(day=1) - relativedelta(months=i)).strftime('%Y-%m')
-        for i in range(11, -1, -1) # De Nov/2024 até o Mês Atual
+        for i in range(11, -1, -1) 
     ]
     
     df_passado_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_passado)].copy()
@@ -1596,11 +1600,12 @@ def dashboard():
         
         # Soma a Receita da stg_transacoes com a Receita (Salário) da fact_salario
         df_pivot['Receita'] = df_pivot.get('Receita', 0) + df_pivot.get('Receita (Salário)', 0)
-        df_pivot['Despesa'] = df_pivot.get('Despesa', 0)
+        
+        # Usa 'Despesa' (singular)
+        df_pivot['Despesa'] = df_pivot.get('Despesa', 0) 
         
         df_pivot['Saldo_Mensal'] = df_pivot['Receita'] - df_pivot['Despesa']
         
-        # Reindexa para garantir que todos os 13/12 meses apareçam
         df_completo = pd.DataFrame({'ano_mes': meses_ref}).set_index('ano_mes')
         df_pivot = df_completo.join(df_pivot, how='left').fillna(0).reset_index()
         
