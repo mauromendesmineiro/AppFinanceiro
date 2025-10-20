@@ -695,7 +695,7 @@ def formulario_transacao():
         return
     
     # CRÍTICO: ALTERAÇÃO NA EXIBIÇÃO PARA USAR O NOME COMPLETO
-    st.info(f"Usuário (Quem Registrou) **automaticamente** definido como: **{nome_usuario}**")
+    #st.info(f"Usuário (Quem Registrou) **automaticamente** definido como: **{nome_usuario}**")
     # --------------------------------------------------------
 
     # Validação Mínima
