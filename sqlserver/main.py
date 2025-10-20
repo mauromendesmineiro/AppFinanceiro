@@ -1708,18 +1708,26 @@ def dashboard():
     st.markdown("---")
 
 def main():
-    # Inicializa o estado da sessão
+    # Inicializa o estado de login
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
     if 'menu_selecionado' not in st.session_state:
         st.session_state.menu_selecionado = "Dashboard"
-
+        
+    # ----------------------------------------------------------------
+    # CONTROLE DE FLUXO: Se não estiver logado, exibe apenas a tela de login
+    # ----------------------------------------------------------------
+    if not st.session_state.logged_in:
+        formulario_login()
+        return # Interrompe a execução do main() aqui
+    
+    # Se estiver logado, continua a execução do menu
+    
     # --- 1. SIDEBAR (Menu Principal) ---
     with st.sidebar:
         st.title("Menu Principal")
         
-        # -----------------------------------------------------------------
-        # 💡 NOVO LAYOUT: 2 BLOCOS POR LINHA
-        # -----------------------------------------------------------------
-        
+        # Opções principais (Dashboard, Transação, Acerto de Contas, Corrigir Transação)
         # PRIMEIRA LINHA: Dashboard e Transação
         col1, col2 = st.columns(2) 
 
@@ -1737,17 +1745,14 @@ def main():
             if st.button("💰 Acerto", key="btn_acerto", use_container_width=True):
                 st.session_state.menu_selecionado = "Acerto de Contas"
         with col4:
-            if st.button("🛠️ Corrigir", key="btn_corrigir", use_container_width=True):
+            if st.button("🛠️ Corrigir Transação", key="btn_corrigir", use_container_width=True):
                 st.session_state.menu_selecionado = "Corrigir Transação"
 
-        # -----------------------------------------------------------------
-        # SEÇÃO DE CADASTROS (Permanecem em coluna única)
-        # -----------------------------------------------------------------
         st.subheader("Cadastros (Dimensões)")
         
-        # Opções de cadastro (dimensões) - Mantenha a lógica de loop aqui
+        # Opções de cadastro (dimensões)
         opcoes_cadastro = {
-            "Tipos de Transação": None, # Apenas para o nome do botão, a função será chamada no bloco final
+            "Tipos de Transação": None,
             "Categorias": None,
             "Subcategorias": None,
             "Usuários": None,
@@ -1758,10 +1763,20 @@ def main():
             if st.button(nome_opcao, key=f"btn_cadastro_{nome_opcao}", use_container_width=True):
                 st.session_state.menu_selecionado = nome_opcao
 
-        # Botão para limpar cache (Útil)
+        # Botões de Logout/Cache
         st.markdown("---")
         if st.button("Limpar Cache e Recarregar", on_click=limpar_cache_dados):
-             pass
+             pass 
+        
+        # Botão de Logout
+        if st.button("Sair (Logout)", key="btn_logout"):
+            st.session_state.logged_in = False
+            # Limpa as variáveis de sessão sensíveis
+            if 'id_usuario_logado' in st.session_state:
+                 del st.session_state.id_usuario_logado
+            if 'login' in st.session_state:
+                 del st.session_state.login
+            st.rerun() # Reinicia para a tela de login
 
     # --- 2. EXIBIÇÃO DO FORMULÁRIO SELECIONADO ---
     opcao_atual = st.session_state.menu_selecionado
@@ -1774,7 +1789,6 @@ def main():
         formulario_salario()
     elif opcao_atual == "Corrigir Transação": 
         editar_transacao()
-    # 💡 CHAMADA EXISTENTE CORRETA:
     elif opcao_atual == "Acerto de Contas":
         exibir_detalhe_rateio()
     elif opcao_atual == "Tipos de Transação":
