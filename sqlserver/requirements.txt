@@ -1,7 +1,5 @@
 streamlit
-psycopg2-binary
 pandas
-datetime
+plotly
 python-dateutil
-plotly.express
-plotly.graph_objects
+psycopg2-binary
