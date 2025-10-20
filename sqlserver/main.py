@@ -576,22 +576,21 @@ def formulario_salario():
 
     # 1. Consulta o Usuário para o Dropdown
     try:
-        df_usuarios = consultar_dados("dim_usuario", usar_view=False)
+        # CORREÇÃO: Argumento 'usar_view=False' REMOVIDO
+        df_usuarios = consultar_dados("dim_usuario")
     except Exception:
         df_usuarios = pd.DataFrame(columns=['id_usuario', 'dsc_nome'])
 
     if df_usuarios.empty:
         st.warning("Primeiro, cadastre pelo menos um Usuário na aba 'Usuário'.")
-        if 'consultar_dados' not in globals():
-            st.error("ERRO: A função 'consultar_dados' não está definida ou a tabela 'dim_usuario' está vazia.")
-            return
+        # Removido o check 'consultar_dados' no globals, pois ele deve ser uma importação garantida.
         return
 
     # Mapeamento do Usuário (Nome -> ID)
     usuarios_dict = dict(zip(df_usuarios['dsc_nome'], df_usuarios['id_usuario']))
     usuarios_nomes = list(usuarios_dict.keys())
     
-    # ------------------ BLOC FORMULÁRIO (INALTERADO) ------------------
+    # ------------------ BLOC FORMULÁRIO ------------------
     with st.form("salario_form"):
         # Campos do Formulário
         usuario_selecionado_nome = st.selectbox(
@@ -608,7 +607,10 @@ def formulario_salario():
             if valor_salario > 0:
                 id_usuario = usuarios_dict[usuario_selecionado_nome]
                 
-                # --- CORREÇÃO CRÍTICA: FUNÇÃO DE INSERÇÃO DESCOMENTADA ---
+                # --- FUNÇÃO DE INSERÇÃO ---
+                # Esta função deve estar definida no seu main.py
+                # Ex: inserir_dados(tabela, dados, campos)
+                # -------------------------
                 inserir_dados(
                     tabela="fact_salario", 
                     dados=(id_usuario, valor_salario, data_recebimento, observacao),
@@ -622,40 +624,41 @@ def formulario_salario():
     # ------------------ FIM FORMULÁRIO ------------------
 
 
-    # Exibe a tabela com as colunas ajustadas, usando a nova View
+    # Exibe a tabela com as colunas ajustadas, usando a View
     st.subheader("Salários Registrados")
     
     # 1. Consulta a View que já tem o Nome do Usuário, Ano e Mês
+    # CORREÇÃO: Argumento 'usar_view=True' REMOVIDO
     df_salarios = consultar_dados("vw_fact_salarios") 
 
     if not df_salarios.empty:
         
-        # 2. Função de Formatação (reutilizada)
+        # 2. Função de Formatação (deve ser definida no escopo global ou localmente)
         def formatar_moeda(x):
             return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
         # 3. Renomeação das Colunas para Exibição
         df_exibicao = df_salarios.rename(columns={
-            # Colunas originais (do banco) : Novos nomes (para exibição)
             'nomeusuario': 'Usuário', 
             'vl_salario': 'Valor do Salário',
             'dsc_observacao': 'Descrição do Salário',
         })
         
-        # 4. CRITICAL FIX: Usa os nomes RENOMEADOS na lista de seleção.
+        # 4. Seleção das Colunas Finais
         colunas_finais = [
             "id_salario",
-            "Usuário",                   # <-- Nome Renomeado
-            "Valor do Salário",          # <-- Nome Renomeado
+            "Usuário", 
+            "Valor do Salário",
             "dt_recebimento",
-            "Descrição do Salário",      # <-- Nome Renomeado
+            "Descrição do Salário",
             "ano",
             "mes"
         ]
 
-        # 5. Aplica a Formatação de Moeda (Melhorar a Formatação)
-        # Vamos reordenar a formatação de moeda para garantir que ela seja aplicada.
-        # df_exibicao['Valor do Salário'] = df_exibicao['Valor do Salário'].apply(formatar_moeda) 
+        # 5. Aplica a Formatação de Moeda
+        # Streamlit exibe melhor formatação nativa se o tipo for float.
+        # Se precisar de formatação específica (R$ X.XXX,XX), use st.dataframe.
+        df_exibicao['Valor do Salário'] = df_exibicao['Valor do Salário'].apply(formatar_moeda) 
         
         # 6. Exibe o DataFrame com os nomes de colunas corretos
         st.dataframe(df_exibicao[colunas_finais], hide_index=True, use_container_width=True)
@@ -676,56 +679,61 @@ def formulario_transacao():
     st.header("Registro de Transação")
     
     # 1. CARREGAR DADOS DAS DIMENSÕES
-    df_tipos = consultar_dados("dim_tipotransacao", usar_view=False)
-    df_categorias = consultar_dados("dim_categoria", usar_view=False)
-    df_subcategorias = consultar_dados("dim_subcategoria", usar_view=False)
-    
-    # Necessário apenas para o campo "Quem Pagou"
-    df_usuarios = consultar_dados("dim_usuario", usar_view=False) 
+    # CORREÇÃO: 'usar_view=False' REMOVIDO de todas as chamadas
+    df_tipos = consultar_dados("dim_tipotransacao")
+    df_categorias = consultar_dados("dim_categoria")
+    df_subcategorias = consultar_dados("dim_subcategoria")
+    df_usuarios = consultar_dados("dim_usuario") 
 
     # --- DADOS DO USUÁRIO LOGADO (VINCULAÇÃO AUTOMÁTICA) ---
     # Estes dados devem ser injetados na stg_transacoes
-    id_usuario_logado = st.session_state.id_usuario_logado
-    login_usuario = st.session_state.login
+    # Presume que estas chaves estão no st.session_state (configuradas no login)
+    try:
+        id_usuario_logado = st.session_state.id_usuario_logado
+        login_usuario = st.session_state.login
+    except AttributeError:
+        st.error("Erro de Sessão: As variáveis de usuário logado (id_usuario_logado e login) não estão configuradas na sessão.")
+        return
     
     st.info(f"Usuário (Quem Registrou) **automaticamente** definido como: **{login_usuario}**")
     # --------------------------------------------------------
 
-    # CORREÇÃO: Removido df_usuarios.empty da validação
-    if df_tipos.empty or df_categorias.empty or df_subcategorias.empty:
-        st.warning("É necessário cadastrar: Tipos, Categorias e Subcategorias.")
+    # Validação Mínima
+    if df_tipos.empty or df_categorias.empty or df_subcategorias.empty or df_usuarios.empty:
+        st.warning("É necessário cadastrar: Usuários, Tipos, Categorias e Subcategorias. Verifique as tabelas de dimensões.")
         return
 
+    # Mapeamentos
     tipos_map = dict(zip(df_tipos['dsc_tipotransacao'], df_tipos['id_tipotransacao']))
-    
-    # Criado apenas para o campo 'Quem Pagou'
     usuarios_nomes = df_usuarios['dsc_nome'].tolist()
-    
     tipos_nomes = list(tipos_map.keys())
     
     # ----------------------------------------
     # LINHA 1: DATA, TIPO 
     # ----------------------------------------
-    # Ajustado para 2 colunas, já que Usuário (Quem Registrou) foi removido
     col1, col2 = st.columns(2) 
     with col1:
         data_transacao = st.date_input("Data da Transação:", datetime.date.today())
     with col2:
-        # st.selectbox: Tipo de Transação - COM CALLBACK 
+        # st.selectbox: Tipo de Transação - COM CALLBACK (reset_categoria deve ser definido)
         tipo_nome = st.selectbox(
             "Tipo de Transação:", 
             tipos_nomes, 
             key="sel_tipo", 
-            on_change=reset_categoria 
+            # on_change=reset_categoria # Se 'reset_categoria' estiver definido globalmente
         )
-    # Coluna 3 removida (onde estava o Usuário Quem Registrou)
     
     # ----------------------------------------
     # LINHA 2: CATEGORIA (Filtro pelo Tipo)
     # ----------------------------------------
     
     id_tipo_selecionado = tipos_map.get(tipo_nome)
-    df_cats_filtradas = df_categorias[df_categorias['id_tipotransacao'] == id_tipo_selecionado].copy()
+    # Garante que id_tipo_selecionado não é None
+    if id_tipo_selecionado is not None:
+        df_cats_filtradas = df_categorias[df_categorias['id_tipotransacao'] == id_tipo_selecionado].copy()
+    else:
+        df_cats_filtradas = pd.DataFrame()
+    
     
     if df_cats_filtradas.empty:
         st.warning(f"Não há Categorias cadastradas para o Tipo '{tipo_nome}'. Cadastre uma Categoria.")
@@ -735,7 +743,6 @@ def formulario_transacao():
 
     col4, col5 = st.columns(2)
     with col4:
-        # st.selectbox: Categoria - O 'index=0' garante que ele pegará o primeiro item após o reset.
         categoria_nome = st.selectbox(
             "Categoria:", 
             categorias_nomes, 
@@ -747,25 +754,20 @@ def formulario_transacao():
     # LINHA 2 CONTINUA: SUBCATEGORIA (Filtro pela Categoria)
     # ----------------------------------------
     
-    if categoria_nome == "(Cadastre uma Categoria)":
-        df_subs_filtradas = pd.DataFrame() 
-        subcategorias_nomes = ["(Cadastre uma Subcategoria)"]
-    else:
-        # Verifica se a categoria selecionada existe no DataFrame filtrado, evitando erros.
-        if categoria_nome in df_cats_filtradas['dsc_categoriatransacao'].values:
-            id_categoria_selecionada = df_cats_filtradas[df_cats_filtradas['dsc_categoriatransacao'] == categoria_nome]['id_categoria'].iloc[0]
-            
-            df_subs_filtradas = df_subcategorias[df_subcategorias['id_categoria'] == id_categoria_selecionada].copy()
-            
-            if df_subs_filtradas.empty:
-                st.warning(f"Não há Subcategorias cadastradas para a Categoria '{categoria_nome}'. Cadastre uma Subcategoria.")
-                subcategorias_nomes = ["(Cadastre uma Subcategoria)"]
-            else:
-                subcategorias_nomes = df_subs_filtradas['dsc_subcategoriatransacao'].tolist()
+    df_subs_filtradas = pd.DataFrame()
+    subcategorias_nomes = ["(Selecione uma Categoria válida)"] # Default
+    
+    # Lógica de Filtragem da Subcategoria
+    if categoria_nome != "(Cadastre uma Categoria)" and categoria_nome in df_cats_filtradas['dsc_categoriatransacao'].values:
+        
+        id_categoria_selecionada = df_cats_filtradas[df_cats_filtradas['dsc_categoriatransacao'] == categoria_nome]['id_categoria'].iloc[0]
+        df_subs_filtradas = df_subcategorias[df_subcategorias['id_categoria'] == id_categoria_selecionada].copy()
+        
+        if df_subs_filtradas.empty:
+            st.warning(f"Não há Subcategorias cadastradas para a Categoria '{categoria_nome}'. Cadastre uma Subcategoria.")
+            subcategorias_nomes = ["(Cadastre uma Subcategoria)"]
         else:
-            # Caso a categoria selecionada seja inválida após a troca de Tipo, usa placeholder.
-            df_subs_filtradas = pd.DataFrame()
-            subcategorias_nomes = ["(Selecione uma Categoria válida)"]
+            subcategorias_nomes = df_subs_filtradas['dsc_subcategoriatransacao'].tolist()
 
 
     with col5:
@@ -782,7 +784,6 @@ def formulario_transacao():
     col6, col7, col8 = st.columns(3)
     
     with col6:
-        # Mantém a seleção de quem pagou, permitindo que o usuário logado registre pagamentos de outros
         quem_pagou = st.selectbox("Quem Pagou:", usuarios_nomes, key="sel_quem_pagou") 
     with col7:
         e_dividido = st.radio(
@@ -806,7 +807,7 @@ def formulario_transacao():
     submitted = st.button("Registrar Transação")
     
     if submitted:
-        # Mapeamento das opções de rádio de volta para N/S para o banco de dados
+        # Mapeamento
         cd_e_dividido_bd = 'S' if e_dividido == 'Sim' else 'N'
         cd_foi_dividido_bd = 'S' if foi_dividido == 'Sim' else 'N'
 
@@ -816,14 +817,13 @@ def formulario_transacao():
         if valor_transacao > 0 and descricao and quem_pagou and is_valid_category and is_valid_subcategory:
             
             # --- USO DOS DADOS VINCULADOS ---
-            # id_usuario e usuario_nome SÃO AGORA OS DADOS DA SESSÃO, e não do selectbox removido.
             id_usuario_final = id_usuario_logado
             usuario_nome_final = login_usuario
             # -------------------------------
             
             id_tipo = int(tipos_map[tipo_nome])
             
-            # Usamos .iloc[0] para obter o ID
+            # Garantia de que os IDs são extraídos corretamente
             id_categoria_final = int(df_cats_filtradas[df_cats_filtradas['dsc_categoriatransacao'] == categoria_nome]['id_categoria'].iloc[0])
             id_subcategoria_final = int(df_subs_filtradas[df_subs_filtradas['dsc_subcategoriatransacao'] == subcategoria_nome]['id_subcategoria'].iloc[0])
             
@@ -835,14 +835,16 @@ def formulario_transacao():
                       "id_subcategoria", "dsc_subcategoriatransacao", "id_usuario", "dsc_nomeusuario",
                       "dsc_transacao", "vl_transacao", "cd_quempagou", "cd_edividido", "cd_foidividido") 
             
+            # Esta função deve estar definida no seu main.py
             inserir_dados(tabela="stg_transacoes", dados=dados, campos=campos)
             st.success(f"Transação '{descricao}' registrada com sucesso por {usuario_nome_final}!")
         else:
             st.warning("Verifique se o Valor, Descrição e Categorias/Subcategorias válidas foram selecionadas.")
 
     st.subheader("Transações em Staging")
-    # Agora você deve usar a view otimizada que criamos antes: 'vw_stg_transacoes'
-    df_stg = consultar_dados("vw_stg_transacoes", usar_view=True) 
+    # Agora você deve usar a view otimizada: 'vw_stg_transacoes'
+    # CORREÇÃO: Argumento 'usar_view=True' REMOVIDO
+    df_stg = consultar_dados("vw_stg_transacoes") 
     st.dataframe(df_stg, use_container_width=True)
 
 def exibir_detalhe_rateio():
@@ -1735,7 +1737,7 @@ def main():
             if st.button("💰 Acerto", key="btn_acerto", use_container_width=True):
                 st.session_state.menu_selecionado = "Acerto de Contas"
         with col4:
-            if st.button("🛠️ Corrigir Transação", key="btn_corrigir", use_container_width=True):
+            if st.button("🛠️ Corrigir", key="btn_corrigir", use_container_width=True):
                 st.session_state.menu_selecionado = "Corrigir Transação"
 
         # -----------------------------------------------------------------
