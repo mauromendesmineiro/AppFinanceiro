@@ -6,6 +6,7 @@ from dateutil.relativedelta import relativedelta
 import psycopg2 
 from psycopg2 import sql
 import plotly.colors as colors
+import numpy as np
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -1504,8 +1505,10 @@ def dashboard():
     
     # --- PRÉ-PROCESSAMENTO GERAL ---
     df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
+    df_transacoes['vl_transacao_ajustado'] = df_transacoes.apply(
+        lambda row: row['vl_transacao'] if row['dsc_tipotransacao'] == 'Receita' else -row['vl_transacao'], axis=1
+    )
     
-    # Define a paleta de cores a ser usada
     PALETA_CORES = px.colors.qualitative.Plotly 
     
     # -----------------------------------------------------------------
@@ -1513,100 +1516,181 @@ def dashboard():
     # -----------------------------------------------------------------
     today = datetime.date.today()
     
-    # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025, INCLUSIVE) - Para fig1
-    # Início: 1 de Novembro do ano passado
+    # 1. VISÃO PASSADA (13 meses: NOV/2024 até NOV/2025, INCLUSIVE) - Para fig1 e fig3
     start_date_passado = today.replace(day=1) - relativedelta(months=11)
+    end_limit_passado = today.replace(day=1) + relativedelta(months=2) # 1º dia de Dezembro/2025
     
-    # CRÍTICO: Limite Fim (Exclusivo): 1 de Dezembro de 2025 (garante que NOV/2025 seja o último mês)
-    end_limit_passado = today.replace(day=1) + relativedelta(months=2) 
-    
-    df_ultimos_12_meses = df_transacoes[
+    df_passado = df_transacoes[
         (df_transacoes['dt_datatransacao'].dt.date >= start_date_passado) &
-        (df_transacoes['dt_datatransacao'].dt.date < end_limit_passado) # Novo Limite
+        (df_transacoes['dt_datatransacao'].dt.date < end_limit_passado)
     ].copy()
     
-    # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026, EXCLUINDO o mês atual) - Para fig2
-    
-    # CRÍTICO: Início: 1 de Dezembro de 2025 (2 meses após o 1º dia do mês atual)
-    start_date_futuro = today.replace(day=1) + relativedelta(months=2)
-    
-    # Limite Fim (Exclusivo): 1 de Dezembro de 2026 (12 meses após o início)
+    # 2. VISÃO FUTURA (12 meses: DEZ/2025 até NOV/2026) - Para fig2 e fig4
+    start_date_futuro = today.replace(day=1) + relativedelta(months=2) # 1º dia de Dezembro/2025
     end_date_futuro = start_date_futuro + relativedelta(months=12)
     
-    df_proximos_12_meses = df_transacoes[
+    df_futuro = df_transacoes[
         (df_transacoes['dt_datatransacao'].dt.date >= start_date_futuro) &
         (df_transacoes['dt_datatransacao'].dt.date < end_date_futuro)
     ].copy()
 
 
     # -----------------------------------------------------------------
-    # GRÁFICO 1: Evolução Mensal (NOV/2024 até Mês Atual)
+    # GERAÇÃO DO DATAFRAME DE SALDO (Comum para Passado e Futuro)
     # -----------------------------------------------------------------
-    
-    if not df_ultimos_12_meses.empty:
-        df_ultimos_12_meses['ano_mes'] = df_ultimos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
-        df_agregado_mensal = df_ultimos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
+
+    def gerar_df_saldo(df):
+        if df.empty:
+            return pd.DataFrame()
+
+        df['ano_mes'] = df['dt_datatransacao'].dt.to_period('M').astype(str)
         
-        meses_ordenados = sorted(df_agregado_mensal['ano_mes'].unique())
-        categoria_ordenada = df_agregado_mensal.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
+        # Agrega Receitas e Despesas
+        df_agregado = df.pivot_table(
+            index='ano_mes',
+            columns='dsc_tipotransacao',
+            values='vl_transacao',
+            aggfunc='sum'
+        ).fillna(0).reset_index()
         
-        fig1 = px.bar(
-            df_agregado_mensal,
-            x='ano_mes',
-            y='vl_transacao',
-            color='dsc_categoriatransacao',
-            title='Históricos de Transações por Categoria',
-            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
-            category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
-            color_discrete_sequence=PALETA_CORES 
+        # Renomeia colunas para 'Receita' e 'Despesa' e garante a existência
+        df_agregado = df_agregado.rename(columns={
+            'Receita': 'Receita',
+            'Despesa': 'Despesa'
+        }).reindex(columns=['ano_mes', 'Receita', 'Despesa']).fillna(0)
+        
+        # Ordena cronologicamente
+        df_agregado = df_agregado.sort_values(by='ano_mes')
+        
+        # Calcula Saldo Mensal
+        df_agregado['Saldo_Mensal'] = df_agregado['Receita'] - df_agregado['Despesa']
+        
+        # Transforma o DF para o formato longo para Plotly (Melhor para Saldo Cumulativo)
+        df_saldo_longo = pd.melt(
+            df_agregado,
+            id_vars=['ano_mes'],
+            value_vars=['Receita', 'Despesa', 'Saldo_Mensal'],
+            var_name='Tipo',
+            value_name='Valor'
         )
-        fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Categoria')
-        fig1.update_yaxes(tickformat=".2f") 
-    else:
-        fig1 = None
+        
+        return df_saldo_longo
+    
+    df_saldo_passado = gerar_df_saldo(df_passado)
+    df_saldo_futuro = gerar_df_saldo(df_futuro)
+
 
     # -----------------------------------------------------------------
-    # GRÁFICO 2: Evolução Mensal (Próximos 12 Meses)
+    # NOVA LINHA DE GRÁFICOS (TOPO)
     # -----------------------------------------------------------------
+    col_saldo_passado, col_saldo_futuro = st.columns(2)
     
-    if not df_proximos_12_meses.empty:
-        df_proximos_12_meses['ano_mes'] = df_proximos_12_meses['dt_datatransacao'].dt.to_period('M').astype(str)
-        df_agregado_futuro = df_proximos_12_meses.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
-        
-        meses_futuros_ordenados = sorted(df_agregado_futuro['ano_mes'].unique())
-        categoria_futura_ordenada = df_agregado_futuro.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
-        
-        fig2 = px.bar(
-            df_agregado_futuro,
-            x='ano_mes',
-            y='vl_transacao',
-            color='dsc_categoriatransacao',
-            title='Transações Futuras por Categoria',
-            labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
-            category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada},
-            color_discrete_sequence=PALETA_CORES 
-        )
-        fig2.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Categoria')
-        fig2.update_yaxes(tickformat=".2f")
-    else:
-        fig2 = None
+    # -----------------------------------------------------------------
+    # GRÁFICO 3: Receitas, Despesas e Saldo (Passado)
+    # -----------------------------------------------------------------
+    with col_saldo_passado:
+        st.subheader("Balanço Mensal (Passado)")
+        if not df_saldo_passado.empty:
+            
+            fig3 = px.bar(
+                df_saldo_passado,
+                x='ano_mes',
+                y='Valor',
+                color='Tipo',
+                barmode='group', # Barras lado a lado
+                title='Receitas, Despesas e Saldo (Últimos 13 Meses)',
+                labels={'ano_mes': 'Mês/Ano', 'Valor': 'Valor Total'},
+                color_discrete_sequence=['#4BBF7C', '#FF6347', '#4682B4'] # Verde (Receita), Vermelho (Despesa), Azul (Saldo)
+            )
+            fig3.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Tipo')
+            fig3.update_yaxes(tickformat=".2f")
+            st.plotly_chart(fig3, use_container_width=True)
+        else:
+            st.info("Dados de balanço insuficientes no período passado.")
+
+
+    # -----------------------------------------------------------------
+    # GRÁFICO 4: Receitas, Despesas e Saldo (Futuro)
+    # -----------------------------------------------------------------
+    with col_saldo_futuro:
+        st.subheader("Balanço Mensal (Futuro)")
+        if not df_saldo_futuro.empty:
+            
+            fig4 = px.bar(
+                df_saldo_futuro,
+                x='ano_mes',
+                y='Valor',
+                color='Tipo',
+                barmode='group',
+                title='Projeção de Balanço (Próximos 12 Meses)',
+                labels={'ano_mes': 'Mês/Ano', 'Valor': 'Valor Total'},
+                color_discrete_sequence=['#4BBF7C', '#FF6347', '#4682B4']
+            )
+            fig4.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Tipo')
+            fig4.update_yaxes(tickformat=".2f")
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.info("Nenhuma transação agendada para o balanço futuro.")
 
     # -----------------------------------------------------------
-    # RENDERIZAÇÃO DE 2 GRÁFICOS POR LINHA
+    # LINHA ORIGINAL DE GRÁFICOS (Evolução por Categoria)
     # -----------------------------------------------------------
-    
+    st.markdown("---") # Separador visual
+
     col_grafico1, col_grafico2 = st.columns(2)
     
+    # -----------------------------------------------------------------
+    # GRÁFICO 1: Evolução Mensal (Passado) - Repetido da lógica anterior
+    # -----------------------------------------------------------------
     with col_grafico1:
-        st.subheader("Evolução Mensal (Passado)")
-        if fig1:
+        st.subheader("Evolução Mensal por Categoria (Passado)")
+        if not df_passado.empty:
+            df_passado['ano_mes'] = df_passado['dt_datatransacao'].dt.to_period('M').astype(str)
+            df_agregado_mensal = df_passado.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
+            
+            meses_ordenados = sorted(df_agregado_mensal['ano_mes'].unique())
+            categoria_ordenada = df_agregado_mensal.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
+            
+            fig1 = px.bar(
+                df_agregado_mensal,
+                x='ano_mes',
+                y='vl_transacao',
+                color='dsc_categoriatransacao',
+                title='Evolução das Transações por Categoria',
+                labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
+                category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
+                color_discrete_sequence=PALETA_CORES 
+            )
+            fig1.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Categoria')
+            fig1.update_yaxes(tickformat=".2f") 
             st.plotly_chart(fig1, use_container_width=True)
         else:
-            st.info("Dados insuficientes no período de 13 meses.")
+            st.info("Dados insuficientes nos últimos 13 meses.")
 
+    # -----------------------------------------------------------------
+    # GRÁFICO 2: Evolução Mensal (Futuro) - Repetido da lógica anterior
+    # -----------------------------------------------------------------
     with col_grafico2:
-        st.subheader("Transações Agendadas (Futuro)")
-        if fig2:
+        st.subheader("Transações Agendadas por Categoria (Futuro)")
+        if not df_futuro.empty:
+            df_futuro['ano_mes'] = df_futuro['dt_datatransacao'].dt.to_period('M').astype(str)
+            df_agregado_futuro = df_futuro.groupby(['ano_mes', 'dsc_categoriatransacao'])['vl_transacao'].sum().reset_index()
+            
+            meses_futuros_ordenados = sorted(df_agregado_futuro['ano_mes'].unique())
+            categoria_futura_ordenada = df_agregado_futuro.groupby('dsc_categoriatransacao')['vl_transacao'].sum().sort_values(ascending=False).index.tolist()
+            
+            fig2 = px.bar(
+                df_agregado_futuro,
+                x='ano_mes',
+                y='vl_transacao',
+                color='dsc_categoriatransacao',
+                title='Transações Futuras Registradas por Categoria',
+                labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
+                category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada},
+                color_discrete_sequence=PALETA_CORES 
+            )
+            fig2.update_layout(xaxis_title='Mês/Ano', yaxis_title='Valor', legend_title='Categoria')
+            fig2.update_yaxes(tickformat=".2f")
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Nenhuma transação agendada/registrada para o período futuro.")
