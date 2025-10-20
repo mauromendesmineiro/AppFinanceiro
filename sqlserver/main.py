@@ -1564,13 +1564,14 @@ def dashboard():
 
     try:
         # 1. Obter Salário Mais Recente DE CADA USUÁRIO (Projeção de Receita)
-        df_salario = consultar_dados("fact_salario")
+        # Consulta a tabela base 'fact_salario'
+        df_salario = consultar_dados("fact_salario") 
         if df_salario.empty:
              raise ValueError("Não há salários registrados para projeção.")
 
-        # 💡 CORREÇÃO AQUI: Agrupamos pelo nome do usuário e pegamos o valor mais recente
-        # 1.1 Encontra o salário mais recente de cada usuário
-        idx_max_data = df_salario.groupby('dsc_nomeusuario')['dt_recebimento'].idxmax()
+        # 💡 CORREÇÃO AQUI: Agrupamos por 'id_usuario' e pegamos o valor mais recente
+        # 1.1 Encontra o ID da linha com a data de recebimento mais recente para CADA 'id_usuario'
+        idx_max_data = df_salario.groupby('id_usuario')['dt_recebimento'].idxmax()
         df_ultimos_salarios = df_salario.loc[idx_max_data]
         
         # 1.2 Soma o total desses últimos salários
