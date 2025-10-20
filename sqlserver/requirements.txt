@@ -4,3 +4,4 @@ pandas
 datetime
 python-dateutil
 plotly.express
+plotly.graph_objects
