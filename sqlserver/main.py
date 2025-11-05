@@ -1042,6 +1042,12 @@ def acerto_multiplo_transacoes():
     if df_pendentes.empty:
         st.info("🎉 Não há transações pendentes de acerto (cd_foidividido = 'N').")
         return
+    
+    # Ordena o DataFrame pela data da transação em ordem decrescente (mais recente primeiro)
+    df_pendentes = df_pendentes.sort_values(
+        by='dt_datatransacao', 
+        ascending=False
+    ).reset_index(drop=True) # Reseta o índice para garantir que a seleção do st.dataframe (iloc) funcione corretamente
 
     st.subheader(f"Transações Pendentes de Acerto ({len(df_pendentes)})")
 
