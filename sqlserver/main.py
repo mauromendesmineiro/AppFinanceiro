@@ -30,10 +30,9 @@ def get_connection():
     )
     return conn
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def consultar_dados(tabela_ou_view):
     """Consulta dados de uma tabela ou view e retorna um DataFrame."""
-    # Assegure-se que o nome da tabela/view esteja em minúsculo!
     tabela_ou_view = tabela_ou_view.lower() 
 
     conn = None # Inicializa conn como None
@@ -41,20 +40,24 @@ def consultar_dados(tabela_ou_view):
     
     try:
         conn = get_connection()
-        # 💡 Uso do sql.Identifier para segurança contra SQL Injection
+        
+        # 💡 ADIÇÃO: Verificação explícita. Se conn for None, levanta um erro que será capturado abaixo.
+        if conn is None:
+            raise Exception("A conexão ao banco de dados falhou ou retornou None.") 
+            
         sql_query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(tabela_ou_view))
         
-        # O read_sql exige uma string, então montamos a query antes
         df = pd.read_sql(sql_query.as_string(conn), conn)
         
-    except psycopg2.Error as e:
+    # 💡 CORREÇÃO: Captura o erro específico do banco, TypeErrors e exceções gerais.
+    except (psycopg2.Error, TypeError, Exception) as e:
         # Exibe um erro amigável ao usuário
-        st.error(f"Erro ao conectar ou consultar o banco de dados. Detalhes: {e}")
+        st.error(f"Erro ao conectar ou consultar o banco de dados para a tabela '{tabela_ou_view}'. Detalhes: {e}")
         # Retorna um DataFrame vazio se houver erro
         df = pd.DataFrame() 
         
     finally:
-        # 💡 GARANTE QUE A CONEXÃO É FECHADA SEMPRE
+        # GARANTE QUE A CONEXÃO É FECHADA SEMPRE
         if conn is not None:
             conn.close()
             
