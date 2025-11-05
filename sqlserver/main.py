@@ -1058,29 +1058,36 @@ def acerto_multiplo_transacoes():
         "vl_transacao": st.column_config.NumberColumn("Valor", format="R$ %.2f")
     }
 
-    # O data_editor permite a seleção de linhas (show_rows_select=True)
-    df_editor_resultado = st.data_editor(
-        df_editor,
+    # O data_editor *renderiza* a tabela
+    st.data_editor(
+        df_pendentes[colunas_editor], # Aqui estamos exibindo o DataFrame original filtrado
         column_config=config,
         hide_index=True,
         key=editor_key,
         use_container_width=True,
-        num_rows="dynamic" # Garante que o editor não limite as linhas
+        num_rows="fixed",
     )
 
     # 3. CAPTURAR OS IDs SELECIONADOS
-    # 💡 CORREÇÃO: Uso de .get() para acessar as chaves de forma segura.
-    # O valor padrão {} ou [] evita o KeyError se o estado não estiver completo.
+    # 💡 Correção: Acessar a chave 'selection' e, dentro dela, a chave 'rows' que contém os índices.
+    
+    # Programação defensiva (para evitar o KeyError 'selection' na primeira execução)
     selecao_estado = st.session_state.get(editor_key, {})
-    selecionados_indices = selecao_estado.get("selection", {}).get("rows", [])
+    
+    # st.data_editor em modo seleção retorna os índices internos do DataFrame
+    indices_selecionados = selecao_estado.get("selection", {}).get("rows", [])
     
     ids_selecionados = []
-    if selecionados_indices:
-        # Usamos .iloc para acessar as linhas do DataFrame por POSIÇÃO (índice 0, 1, 2...)
-        df_selecionadas = df_pendentes.iloc[selecionados_indices]
+    if indices_selecionados:
+        # Usamos .iloc para acessar as linhas por posição (0, 1, 2...)
+        # e então extraímos a coluna 'id_transacao'
+        df_selecionadas = df_pendentes.iloc[indices_selecionados]
         ids_selecionados = df_selecionadas['id_transacao'].tolist()
 
+
+    # Agora, a mensagem de debug deve funcionar
     st.caption(f"**Total de transações selecionadas:** {len(ids_selecionados)}")
+    st.caption(f"IDs Selecionados: {ids_selecionados}") # Mantenha esta linha para debug
     
     # 4. BOTÃO DE AÇÃO
     if st.button(f"✅ Acertar {len(ids_selecionados)} Transações Selecionadas"):
