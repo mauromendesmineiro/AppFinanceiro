@@ -988,7 +988,7 @@ def exibir_detalhe_rateio():
 
 def buscar_transacao_por_id(id_transacao):
     conn = None
-    transacao = None
+    df_transacao = pd.DataFrame()
     
     # 1. Tabela stg_transacoes em minúsculo
     tabela = 'stg_transacoes'
@@ -1001,25 +1001,18 @@ def buscar_transacao_por_id(id_transacao):
     
     try:
         conn = get_connection()
-        cursor = conn.cursor()
+        df_transacao = pd.read_sql(sql_query, conn, params=(id_transacao,))
         
-        # 3. Execução: Passa a ID como uma tupla
-        cursor.execute(sql_query, (id_transacao,)) 
-        
-        # 4. Busca o primeiro (e único) resultado
-        transacao = cursor.fetchone()
-        
-    except psycopg2.Error as ex: # <<< CORREÇÃO DO DRIVER
-        st.error(f"Erro ao buscar transação por ID: {ex}")
-        
-    except Exception as e:
-        st.error(f"Erro inesperado: {e}")
+    except (psycopg2.Error, Exception) as e: 
+        st.error(f"Erro ao buscar transação por ID: {e}")
+        # df_transacao permanece o DataFrame vazio inicializado acima.
 
     finally:
         if conn:
             conn.close()
             
-    return transacao
+    # Retorna um DataFrame (1 linha ou vazio)
+    return df_transacao
 
 def atualizar_transacao_por_id(
     id_transacao, 
@@ -1111,9 +1104,9 @@ def exibir_formulario_edicao(id_transacao):
     # 1. BUSCAR DADOS ATUAIS DA TRANSAÇÃO
     dados_atuais = buscar_transacao_por_id(id_transacao)
     
-    if not dados_atuais:
-        st.error("Não foi possível carregar os dados desta transação.")
-        return
+    if dados_atuais.empty: 
+        st.error(f"Não foi possível carregar os dados da transação com ID {id_transacao} ou a transação não foi encontrada.")
+        return # Sai da função
     
     # 2. BUSCAR DADOS PARA OS DROPDOWNS (DIMENSÕES)
     
@@ -1131,11 +1124,6 @@ def exibir_formulario_edicao(id_transacao):
     
     
     # 3. PREPARAR VALORES PADRÃO
-    
-    if dados_atuais.empty:
-        st.error(f"Erro: Não foi possível carregar os dados da transação com ID {id_transacao_selecionada}. Verifique o banco de dados.")
-        return # Sai da função para evitar o erro
-
     # O código original que está causando o erro, agora seguro pela verificação acima.
     data_transacao_valor = dados_atuais['dt_datatransacao'].iloc[0]
 
