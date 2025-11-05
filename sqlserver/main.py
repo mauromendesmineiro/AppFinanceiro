@@ -1069,20 +1069,18 @@ def acerto_multiplo_transacoes():
     )
 
     # 3. CAPTURAR OS IDs SELECIONADOS
-    # As linhas selecionadas são armazenadas em session_state.
-    linhas_selecionadas_indices = st.session_state[editor_key]["added_rows"]
+    # 💡 CORREÇÃO: Uso de .get() para acessar as chaves de forma segura.
+    # O valor padrão {} ou [] evita o KeyError se o estado não estiver completo.
+    selecao_estado = st.session_state.get(editor_key, {})
+    selecionados_indices = selecao_estado.get("selection", {}).get("rows", [])
     
-    # 💡 Se o Streamlit já tiver a lógica de 'selection' nativa (versões mais recentes):
-    # linhas_selecionadas_indices = st.session_state[editor_key]["selection"]["rows"]
-    
-    # A maneira mais robusta:
-    linhas_selecionadas_indices = df_editor_resultado.loc[st.session_state[editor_key]["selection"]["rows"]].index.tolist()
-    
-    
-    # Mapear os índices selecionados de volta para os IDs de transação
-    ids_selecionados = df_pendentes.loc[linhas_selecionadas_indices]['id_transacao'].tolist()
+    ids_selecionados = []
+    if selecionados_indices:
+        # Usamos .iloc para acessar as linhas do DataFrame por POSIÇÃO (índice 0, 1, 2...)
+        df_selecionadas = df_pendentes.iloc[selecionados_indices]
+        ids_selecionados = df_selecionadas['id_transacao'].tolist()
 
-    st.markdown(f"**IDs Selecionados para Acerto:** {ids_selecionados}")
+    st.caption(f"**Total de transações selecionadas:** {len(ids_selecionados)}")
     
     # 4. BOTÃO DE AÇÃO
     if st.button(f"✅ Acertar {len(ids_selecionados)} Transações Selecionadas"):
