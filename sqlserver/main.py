@@ -1132,8 +1132,11 @@ def exibir_formulario_edicao(id_transacao):
     
     # 3. PREPARAR VALORES PADRÃO
     
-    # O dt_datatransacao é retornado como objeto datetime
-    data_atual_dt = dados_atuais['dt_datatransacao'].date() if isinstance(dados_atuais['dt_datatransacao'], datetime.datetime) else dados_atuais['dt_datatransacao']
+    # Extrai o valor escalar da célula (assumindo que dados_atuais tem 1 linha)
+    data_transacao_valor = dados_atuais['dt_datatransacao'].iloc[0]
+
+    #Aplica a conversão .date() apenas se for um datetime.datetime completo
+    data_atual_dt = data_transacao_valor.date() if isinstance(data_transacao_valor, datetime.datetime) else data_transacao_valor
 
     # O Tipo de Transação deve usar uma lista fixa (Receita/Despesa)
     tipos_transacao = ['Despesas', 'Receitas'] # Use a sua lista real
