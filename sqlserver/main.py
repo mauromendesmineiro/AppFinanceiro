@@ -31,33 +31,43 @@ def get_connection():
     return conn
 
 @st.cache_data(ttl=3600)
-def consultar_dados(tabela_ou_view):
-    """Consulta dados de uma tabela ou view e retorna um DataFrame."""
+def consultar_dados(tabela_ou_view, usar_view=True): 
+    """
+    Consulta dados de uma tabela ou view e retorna um DataFrame.
+    
+    Parâmetros:
+        tabela_ou_view (str): Nome da tabela ou view a ser consultada.
+        usar_view (bool): Parâmetro adicionado para compatibilidade com 
+                          a chamada de outras funções (não tem efeito 
+                          no corpo desta função atualmente).
+    """
     tabela_ou_view = tabela_ou_view.lower() 
 
-    conn = None # Inicializa conn como None
+    conn = None 
     df = pd.DataFrame()
     
     try:
-        conn = get_connection()
+        # 1. Tenta obter a conexão (a falha aqui é a causa raiz do problema de ambiente)
+        conn = get_connection() 
         
-        # 💡 ADIÇÃO: Verificação explícita. Se conn for None, levanta um erro que será capturado abaixo.
+        # 2. Verificação explícita para o caso de get_connection() falhar e retornar None
         if conn is None:
             raise Exception("A conexão ao banco de dados falhou ou retornou None.") 
             
+        # 3. Monta a query com segurança
         sql_query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(tabela_ou_view))
         
+        # 4. Executa a query
         df = pd.read_sql(sql_query.as_string(conn), conn)
         
-    # 💡 CORREÇÃO: Captura o erro específico do banco, TypeErrors e exceções gerais.
+    # 5. Captura TypeErrors (o erro que estava ocorrendo), erros de banco e exceções gerais
     except (psycopg2.Error, TypeError, Exception) as e:
-        # Exibe um erro amigável ao usuário
+        # Exibe um erro amigável
         st.error(f"Erro ao conectar ou consultar o banco de dados para a tabela '{tabela_ou_view}'. Detalhes: {e}")
-        # Retorna um DataFrame vazio se houver erro
         df = pd.DataFrame() 
         
     finally:
-        # GARANTE QUE A CONEXÃO É FECHADA SEMPRE
+        # 6. Garante que a conexão seja fechada
         if conn is not None:
             conn.close()
             
