@@ -1270,6 +1270,7 @@ def exibir_formulario_edicao(id_transacao):
             
             if sucesso:
                 st.success(f"Transação {id_transacao} atualizada com sucesso!")
+                consultar_dados.clear()
                 st.rerun() 
             else:
                 st.error("Erro ao atualizar a transação. Verifique a conexão com o banco.")
