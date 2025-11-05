@@ -1132,10 +1132,14 @@ def exibir_formulario_edicao(id_transacao):
     
     # 3. PREPARAR VALORES PADRÃO
     
-    # Extrai o valor escalar da célula (assumindo que dados_atuais tem 1 linha)
+    if dados_atuais.empty:
+        st.error(f"Erro: Não foi possível carregar os dados da transação com ID {id_transacao_selecionada}. Verifique o banco de dados.")
+        return # Sai da função para evitar o erro
+
+    # O código original que está causando o erro, agora seguro pela verificação acima.
     data_transacao_valor = dados_atuais['dt_datatransacao'].iloc[0]
 
-    #Aplica a conversão .date() apenas se for um datetime.datetime completo
+    # O restante da lógica para data_atual_dt (se já tiver sido corrigida)
     data_atual_dt = data_transacao_valor.date() if isinstance(data_transacao_valor, datetime.datetime) else data_transacao_valor
 
     # O Tipo de Transação deve usar uma lista fixa (Receita/Despesa)
