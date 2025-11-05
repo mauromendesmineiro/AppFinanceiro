@@ -1224,29 +1224,32 @@ def exibir_formulario_edicao(id_transacao):
             # 💡 1. Lógica para buscar os IDs necessários a partir das descrições (Lookups)
             
             # id_tipotransacao (Assumindo que 1=Despesas, 2=Receitas)
+            # Este já é um int nativo
             id_tipo = 1 if novo_tipo == 'Despesas' else 2
             
             # id_categoria
-            id_categoria = df_categorias[
+            # CORREÇÃO: Conversão para int() nativo
+            id_categoria = int(df_categorias[
                 df_categorias['dsc_categoriatransacao'] == nova_categoria
-            ]['id_categoria'].iloc[0]
+            ]['id_categoria'].iloc[0])
             
             # id_subcategoria
-            id_subcategoria = df_subcategorias[
+            # CORREÇÃO: Conversão para int() nativo
+            id_subcategoria = int(df_subcategorias[
                 df_subcategorias['dsc_subcategoriatransacao'] == novo_subcategoria
-            ]['id_subcategoria'].iloc[0]
+            ]['id_subcategoria'].iloc[0])
             
-            # id_usuario (Baseado no Usuário que Registrou: novo_usuario_registro)
-            # CORREÇÃO: Usar a coluna 'dsc_nome' do DataFrame df_usuarios
-            id_usuario = df_usuarios[
+            # id_usuario
+            # CORREÇÃO: Conversão para int() nativo
+            id_usuario = int(df_usuarios[
                 df_usuarios['dsc_nome'] == novo_usuario_registro 
-            ]['id_usuario'].iloc[0]
+            ]['id_usuario'].iloc[0])
 
             # dsc_nomeusuario
             dsc_nomeusuario = novo_usuario_registro
             
             
-            # 💡 2. CHAMADA CORRIGIDA (mantendo os 15 argumentos)
+            # 💡 2. CHAMADA CORRIGIDA: Os argumentos agora são tipos nativos
             sucesso = atualizar_transacao_por_id(
                 id_transacao,                  
                 nova_data,                     
