@@ -1237,32 +1237,32 @@ def exibir_formulario_edicao(id_transacao):
             ]['id_subcategoria'].iloc[0]
             
             # id_usuario (Baseado no Usuário que Registrou: novo_usuario_registro)
-            # O valor de novo_usuario_registro vem do text_input disabled, que usa o valor scalar.
+            # CORREÇÃO: Usar a coluna 'dsc_nome' do DataFrame df_usuarios
             id_usuario = df_usuarios[
-                df_usuarios['dsc_nomeusuario'] == novo_usuario_registro
+                df_usuarios['dsc_nome'] == novo_usuario_registro 
             ]['id_usuario'].iloc[0]
 
-            # dsc_nomeusuario é o próprio novo_usuario_registro
+            # dsc_nomeusuario
             dsc_nomeusuario = novo_usuario_registro
             
             
-            # 💡 2. CHAMADA CORRIGIDA: Passando os 15 argumentos na ordem da função
+            # 💡 2. CHAMADA CORRIGIDA (mantendo os 15 argumentos)
             sucesso = atualizar_transacao_por_id(
-                id_transacao,                  # 1
-                nova_data,                     # 2 -> dt_datatransacao
-                id_tipo,                       # 3 -> id_tipotransacao (NOVO)
-                novo_tipo,                     # 4 -> dsc_tipotransacao
-                id_categoria,                  # 5 -> id_categoria (NOVO)
-                nova_categoria,                # 6 -> dsc_categoriatransacao
-                id_subcategoria,               # 7 -> id_subcategoria (NOVO)
-                novo_subcategoria,             # 8 -> dsc_subcategoriatransacao
-                id_usuario,                    # 9 -> id_usuario (NOVO)
-                dsc_nomeusuario,               # 10 -> dsc_nomeusuario (NOVO)
-                nova_descricao,                # 11 -> dsc_transacao
-                novo_valor,                    # 12 -> vl_transacao
-                novo_pagador,                  # 13 -> cd_quempagou
-                novo_e_dividido,               # 14 -> cd_edividido
-                novo_foi_dividido              # 15 -> cd_foidividido
+                id_transacao,                  
+                nova_data,                     
+                id_tipo,                       
+                novo_tipo,                     
+                id_categoria,                  
+                nova_categoria,                
+                id_subcategoria,               
+                novo_subcategoria,             
+                id_usuario,                    
+                dsc_nomeusuario,               
+                nova_descricao,                
+                novo_valor,                    
+                novo_pagador,                  
+                novo_e_dividido,               
+                novo_foi_dividido              
             )
             
             if sucesso:
