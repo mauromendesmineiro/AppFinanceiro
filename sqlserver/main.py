@@ -1043,51 +1043,42 @@ def acerto_multiplo_transacoes():
         st.info("🎉 Não há transações pendentes de acerto (cd_foidividido = 'N').")
         return
 
-    st.subheader(f"Transações Pendentes ({len(df_pendentes)})")
+    st.subheader(f"Transações Pendentes de Acerto ({len(df_pendentes)})")
 
     # 2. USAR st.data_editor PARA SELEÇÃO MÚLTIPLA
-    editor_key = "data_editor_acerto"
-    
-    # Exibir apenas as colunas relevantes
     colunas_editor = ['id_transacao', 'dt_datatransacao', 'dsc_transacao', 'vl_transacao', 'cd_quempagou']
-    
-    df_editor = df_pendentes[colunas_editor].copy()
+    df_exibicao = df_pendentes[colunas_editor]
     
     config = {
         "dt_datatransacao": st.column_config.DatetimeColumn("Data", format="YYYY-MM-DD"),
-        "vl_transacao": st.column_config.NumberColumn("Valor", format="R$ %.2f")
+        "vl_transacao": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f")
     }
 
-    # O data_editor *renderiza* a tabela
-    st.data_editor(
-        df_pendentes[colunas_editor], # Aqui estamos exibindo o DataFrame original filtrado
+    # 💡 st.dataframe é o elemento correto para seleção!
+    selecao_evento = st.dataframe(
+        df_exibicao,
         column_config=config,
         hide_index=True,
-        key=editor_key,
         use_container_width=True,
-        num_rows="fixed",
+        # 💡 Chave para ativação da seleção
+        selection_mode="multi-row", 
+        # on_select="rerun" é opcional, mas ativa o widget para interação imediata
+        on_select="rerun" 
     )
 
     # 3. CAPTURAR OS IDs SELECIONADOS
-    # 💡 Correção: Acessar a chave 'selection' e, dentro dela, a chave 'rows' que contém os índices.
-    
-    # Programação defensiva (para evitar o KeyError 'selection' na primeira execução)
-    selecao_estado = st.session_state.get(editor_key, {})
-    
-    # st.data_editor em modo seleção retorna os índices internos do DataFrame
-    indices_selecionados = selecao_estado.get("selection", {}).get("rows", [])
+    # 💡 A seleção é capturada diretamente do objeto retornado (selecao_evento)
+    indices_selecionados = selecao_evento.selection.rows
     
     ids_selecionados = []
     if indices_selecionados:
-        # Usamos .iloc para acessar as linhas por posição (0, 1, 2...)
-        # e então extraímos a coluna 'id_transacao'
+        # Usamos .iloc para acessar as linhas do DataFrame original (df_pendentes) pela POSIÇÃO
+        # O objeto de seleção retorna os índices posicionais (0, 1, 2...)
         df_selecionadas = df_pendentes.iloc[indices_selecionados]
         ids_selecionados = df_selecionadas['id_transacao'].tolist()
 
-
-    # Agora, a mensagem de debug deve funcionar
+    # O resto do código (botão e lógica de atualização) permanece o mesmo.
     st.caption(f"**Total de transações selecionadas:** {len(ids_selecionados)}")
-    st.caption(f"IDs Selecionados: {ids_selecionados}") # Mantenha esta linha para debug
     
     # 4. BOTÃO DE AÇÃO
     if st.button(f"✅ Acertar {len(ids_selecionados)} Transações Selecionadas"):
