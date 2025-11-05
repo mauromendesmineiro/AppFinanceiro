@@ -986,6 +986,138 @@ def exibir_detalhe_rateio():
         use_container_width=True
     )
 
+def atualizar_status_acerto(lista_ids):
+    conn = None
+    # Verifica se há IDs para evitar erro SQL e trabalho desnecessário
+    if not lista_ids:
+        return True 
+
+    # 💡 Query usa UNNEST para desempacotar a lista de IDs do Python em valores SQL
+    sql_update = """
+        UPDATE stg_transacoes SET
+            cd_foidividido = 'S'
+        WHERE id_transacao IN (SELECT unnest(%s));
+    """
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # O argumento é uma tupla contendo a lista (array) de IDs
+        cursor.execute(sql_update, (lista_ids,))
+        conn.commit()
+        
+        return True
+        
+    except psycopg2.Error as ex:
+        # st.error deve estar acessível se essa função for chamada em um contexto Streamlit
+        st.error(f"Erro do banco de dados ao realizar acerto múltiplo: {ex}")
+        if conn: conn.rollback()
+        return False
+        
+    except Exception as e:
+        st.error(f"Erro inesperado ao realizar acerto múltiplo: {e}")
+        if conn: conn.rollback()
+        return False
+
+    finally:
+        if conn: conn.close()
+
+def acerto_multiplo_transacoes():
+    st.title("💰 Acerto de Transações Pendentes")
+    st.markdown("Selecione as transações que foram acertadas/saldadas para atualizar o campo **cd_foidividido** para 'S'.")
+
+    # 1. CARREGAR DADOS PENDENTES
+    # Adicionando um filtro para carregar apenas transações não acertadas ('N') e que são despesas
+    # Você precisará adaptar a chamada à sua função consultar_dados
+    
+    try:
+        # Se 'consultar_dados' aceitar filtros SQL (WHERE clause)
+        df_pendentes = consultar_dados("stg_transacoes", where_clause="cd_foidividido = 'N'", usar_view=False)
+    except:
+        # Alternativa mais simples: carregar tudo e filtrar no Pandas (menos eficiente)
+        df_todas = consultar_dados("stg_transacoes", usar_view=False)
+        df_pendentes = df_todas[df_todas['cd_foidividido'] == 'N']
+
+    if df_pendentes.empty:
+        st.info("🎉 Não há transações pendentes de acerto (cd_foidividido = 'N').")
+        return
+
+    st.subheader(f"Transações Pendentes ({len(df_pendentes)})")
+
+    # 2. USAR st.data_editor PARA SELEÇÃO MÚLTIPLA
+    editor_key = "data_editor_acerto"
+    
+    # Exibir apenas as colunas relevantes
+    colunas_editor = ['id_transacao', 'dt_datatransacao', 'dsc_transacao', 'vl_transacao', 'cd_quempagou']
+    
+    df_editor = df_pendentes[colunas_editor].copy()
+    
+    config = {
+        "dt_datatransacao": st.column_config.DatetimeColumn("Data", format="YYYY-MM-DD"),
+        "vl_transacao": st.column_config.NumberColumn("Valor", format="R$ %.2f")
+    }
+
+    # O data_editor permite a seleção de linhas (show_rows_select=True)
+    df_editor_resultado = st.data_editor(
+        df_editor,
+        column_config=config,
+        hide_index=True,
+        key=editor_key,
+        use_container_width=True,
+        num_rows="dynamic" # Garante que o editor não limite as linhas
+    )
+
+    # 3. CAPTURAR OS IDs SELECIONADOS
+    # As linhas selecionadas são armazenadas em session_state.
+    linhas_selecionadas_indices = st.session_state[editor_key]["added_rows"]
+    
+    # 💡 Se o Streamlit já tiver a lógica de 'selection' nativa (versões mais recentes):
+    # linhas_selecionadas_indices = st.session_state[editor_key]["selection"]["rows"]
+    
+    # A maneira mais robusta:
+    linhas_selecionadas_indices = df_editor_resultado.loc[st.session_state[editor_key]["selection"]["rows"]].index.tolist()
+    
+    
+    # Mapear os índices selecionados de volta para os IDs de transação
+    ids_selecionados = df_pendentes.loc[linhas_selecionadas_indices]['id_transacao'].tolist()
+
+    st.markdown(f"**IDs Selecionados para Acerto:** {ids_selecionados}")
+    
+    # 4. BOTÃO DE AÇÃO
+    if st.button(f"✅ Acertar {len(ids_selecionados)} Transações Selecionadas"):
+        if not ids_selecionados:
+            st.warning("Selecione pelo menos uma transação para acertar.")
+        else:
+            with st.spinner(f"Atualizando {len(ids_selecionados)} transações..."):
+                sucesso = atualizar_status_acerto(ids_selecionados)
+
+                if sucesso:
+                    st.success(f"🎉 {len(ids_selecionados)} transações foram acertadas com sucesso!")
+                    # Limpar o cache para que a lista de pendentes seja atualizada
+                    consultar_dados.clear()
+                    st.rerun()
+                else:
+                    st.error("Falha ao atualizar o status de acerto no banco de dados.")
+
+def pagina_acerto_controle():
+    st.title("💰 Gestão de Acertos e Rateio")
+
+    # 💡 Usamos st.tabs para organizar as funcionalidades
+    tab_detalhe, tab_acerto_multiplo = st.tabs(["📊 Detalhe e Rateio de Contas", "✅ Acerto Múltiplo"])
+
+    # --- ABA 1: Fluxo Original de Detalhe/Rateio ---
+    with tab_detalhe:
+        # Chama a função que você já tem para mostrar o rateio e detalhes
+        # Se for a função original, chame-a aqui.
+        exibir_detalhe_rateio() # Supondo que você tem esta função
+        # Se você ainda não tem, substitua pela sua lógica de detalhe e rateio
+        
+    # --- ABA 2: Novo Fluxo de Acerto Múltiplo ---
+    with tab_acerto_multiplo:
+        # Chama a nova função que criamos na resposta anterior
+        acerto_multiplo_transacoes()
+
 def buscar_transacao_por_id(id_transacao):
     conn = None
     df_transacao = pd.DataFrame()
@@ -2060,7 +2192,6 @@ def main():
     # CONTROLE DE FLUXO: Se não estiver logado, exibe apenas a tela de login
     # ----------------------------------------------------------------
     if not st.session_state.logged_in:
-        # A função login_page() deve estar definida e centralizada
         login_page()
         return 
     
