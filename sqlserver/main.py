@@ -2299,7 +2299,7 @@ def main():
     elif opcao_atual == "Corrigir Transação": 
         editar_transacao()
     elif opcao_atual == "Acerto de Contas":
-        exibir_detalhe_rateio()
+        pagina_acerto_controle()
     elif opcao_atual == "Tipos de Transação":
         formulario_tipo_transacao()
     elif opcao_atual == "Categorias":
