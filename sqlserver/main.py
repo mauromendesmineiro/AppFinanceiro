@@ -1104,6 +1104,7 @@ def exibir_formulario_edicao(id_transacao):
     # 1. BUSCAR DADOS ATUAIS DA TRANSAÇÃO
     dados_atuais = buscar_transacao_por_id(id_transacao)
     
+    # 💡 CORREÇÃO: Verificação única. Se o DataFrame veio vazio, sai.
     if dados_atuais.empty: 
         st.error(f"Não foi possível carregar os dados da transação com ID {id_transacao} ou a transação não foi encontrada.")
         return # Sai da função
@@ -1114,20 +1115,24 @@ def exibir_formulario_edicao(id_transacao):
     df_usuarios = consultar_dados("dim_usuario", usar_view=False)
     usuarios_nomes = df_usuarios['dsc_nome'].tolist() if not df_usuarios.empty and 'dsc_nome' in df_usuarios.columns else []
     
-    # Categorias (dim_categoria) - CORRIGIDO: USANDO dsc_categoriatransacao
+    # Categorias (dim_categoria)
     df_categorias = consultar_dados("dim_categoria", usar_view=False)
     categorias_nomes = df_categorias['dsc_categoriatransacao'].tolist() if not df_categorias.empty and 'dsc_categoriatransacao' in df_categorias.columns else []
 
-    # Subcategorias (dim_subcategoria) - ASSUMINDO dsc_subcategoriatransacao
+    # Subcategorias (dim_subcategoria)
     df_subcategorias = consultar_dados("dim_subcategoria", usar_view=False)
     subcategorias_nomes = df_subcategorias['dsc_subcategoriatransacao'].tolist() if not df_subcategorias.empty and 'dsc_subcategoriatransacao' in df_subcategorias.columns else []
     
     
     # 3. PREPARAR VALORES PADRÃO
-    # O código original que está causando o erro, agora seguro pela verificação acima.
-    data_transacao_valor = dados_atuais['dt_datatransacao'].iloc[0]
+    
+    # 💡 Extração única dos dados para um acesso mais limpo e seguro
+    dados_atuais_scalar = dados_atuais.iloc[0]
+    
+    # Acesso seguro ao valor escalar da data
+    data_transacao_valor = dados_atuais_scalar['dt_datatransacao']
 
-    # O restante da lógica para data_atual_dt (se já tiver sido corrigida)
+    # Conversão segura para o st.date_input
     data_atual_dt = data_transacao_valor.date() if isinstance(data_transacao_valor, datetime.datetime) else data_transacao_valor
 
     # O Tipo de Transação deve usar uma lista fixa (Receita/Despesa)
@@ -1135,6 +1140,7 @@ def exibir_formulario_edicao(id_transacao):
     
     # 4. FORMULÁRIO PRÉ-PREENCHIDO
     with st.form("edicao_transacao_form"):
+        
         # LINHA 1: Data, Tipo, Usuário (Quem Registrou)
         col1, col2, col3 = st.columns(3)
         
@@ -1144,66 +1150,72 @@ def exibir_formulario_edicao(id_transacao):
         with col2:
             novo_tipo = st.selectbox("Tipo de Transação:", 
                                      tipos_transacao, 
-                                     index=tipos_transacao.index(dados_atuais['dsc_tipotransacao']))
+                                     # 💡 Usando o valor escalar
+                                     index=tipos_transacao.index(dados_atuais_scalar['dsc_tipotransacao']))
 
         with col3:
-            # Usuário que Registrou (cd_quemregistrou é o campo que você deve ter)
-            novo_usuario_registro = st.text_input("Usuário (Quem Registrou):", value=dados_atuais.get('cd_quemregistrou', 'Não Informado'), disabled=True) 
+            # 💡 Usando o valor escalar
+            novo_usuario_registro = st.text_input("Usuário (Quem Registrou):", 
+                                                  value=dados_atuais_scalar['dsc_nomeusuario'], # Corrigido para dsc_nomeusuario
+                                                  disabled=True) 
 
         # LINHA 2: Categoria, Subcategoria, Valor
         col4, col5, col6 = st.columns(3)
         with col4:
-            # Garante que a Categoria atual está na lista de opções (fundamental para preenchimento)
-            if dados_atuais['dsc_categoriatransacao'] not in categorias_nomes:
-                 categorias_nomes.append(dados_atuais['dsc_categoriatransacao'])
+            categoria_atual = dados_atuais_scalar['dsc_categoriatransacao']
+            if categoria_atual not in categorias_nomes:
+                 categorias_nomes.append(categoria_atual)
 
             nova_categoria = st.selectbox("Categoria:", 
-                                          categorias_nomes, 
-                                          index=categorias_nomes.index(dados_atuais['dsc_categoriatransacao']))
+                                         categorias_nomes, 
+                                         index=categorias_nomes.index(categoria_atual))
 
         with col5:
-            # Garante que a Subcategoria atual está na lista de opções
-            if dados_atuais['dsc_subcategoriatransacao'] not in subcategorias_nomes:
-                 subcategorias_nomes.append(dados_atuais['dsc_subcategoriatransacao'])
+            subcategoria_atual = dados_atuais_scalar['dsc_subcategoriatransacao']
+            if subcategoria_atual not in subcategorias_nomes:
+                 subcategorias_nomes.append(subcategoria_atual)
 
             novo_subcategoria = st.selectbox("Subcategoria:", 
                                              subcategorias_nomes, 
-                                             index=subcategorias_nomes.index(dados_atuais['dsc_subcategoriatransacao']))
+                                             index=subcategorias_nomes.index(subcategoria_atual))
             
         with col6:
-            # CORREÇÃO CRÍTICA: Converter o valor DECIMAL (do DB) para float, para evitar o StreamlitMixedNumericTypesError
-            novo_valor = st.number_input("Valor da Transação:", value=float(dados_atuais['vl_transacao']), min_value=0.01, format="%.2f")
+            # 💡 Usando o valor escalar e conversão para float
+            novo_valor = st.number_input("Valor da Transação:", 
+                                         value=float(dados_atuais_scalar['vl_transacao']), 
+                                         min_value=0.01, 
+                                         format="%.2f")
         
         # LINHA 3: Descrição Detalhada
-        nova_descricao = st.text_area("Descrição Detalhada:", value=dados_atuais['dsc_transacao'])
+        # 💡 Usando o valor escalar
+        nova_descricao = st.text_area("Descrição Detalhada:", 
+                                      value=dados_atuais_scalar['dsc_transacao'])
 
         # LINHA 4: Controle de Pagamento
         st.markdown("##### Controle de Pagamento")
         col7, col8, col9 = st.columns(3)
         
         with col7:
-            # Quem Pagou (usa a lista de Usuários)
-            if dados_atuais['cd_quempagou'] not in usuarios_nomes:
-                 usuarios_nomes.append(dados_atuais['cd_quempagou'])
+            pagador_atual = dados_atuais_scalar['cd_quempagou']
+            if pagador_atual not in usuarios_nomes:
+                 usuarios_nomes.append(pagador_atual)
 
             novo_pagador = st.selectbox("Quem Pagou (Nome/Apelido):", 
                                          usuarios_nomes, 
-                                         index=usuarios_nomes.index(dados_atuais['cd_quempagou']))
+                                         index=usuarios_nomes.index(pagador_atual))
 
         with col8:
-            # 'S' ou 'N'
             opcoes_divisao = ('N', 'S')
             novo_e_dividido = st.radio("Essa transação será dividida?", 
-                                       opcoes_divisao, 
-                                       index=opcoes_divisao.index(dados_atuais['cd_edividido']), 
-                                       horizontal=True)
+                                         opcoes_divisao, 
+                                         index=opcoes_divisao.index(dados_atuais_scalar['cd_edividido']), 
+                                         horizontal=True)
         
         with col9:
-            # 'S' ou 'N'
             opcoes_acerto = ('N', 'S')
             novo_foi_dividido = st.radio("A transação foi acertada/saldada?", 
                                          opcoes_acerto, 
-                                         index=opcoes_acerto.index(dados_atuais['cd_foidividido']), 
+                                         index=opcoes_acerto.index(dados_atuais_scalar['cd_foidividido']), 
                                          horizontal=True)
 
         submitted = st.form_submit_button("Salvar Correção")
