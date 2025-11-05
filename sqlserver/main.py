@@ -1221,18 +1221,48 @@ def exibir_formulario_edicao(id_transacao):
         submitted = st.form_submit_button("Salvar Correção")
 
         if submitted:
-            # 5. CHAMADA DA FUNÇÃO DE ATUALIZAÇÃO SQL
+            # 💡 1. Lógica para buscar os IDs necessários a partir das descrições (Lookups)
+            
+            # id_tipotransacao (Assumindo que 1=Despesas, 2=Receitas)
+            id_tipo = 1 if novo_tipo == 'Despesas' else 2
+            
+            # id_categoria
+            id_categoria = df_categorias[
+                df_categorias['dsc_categoriatransacao'] == nova_categoria
+            ]['id_categoria'].iloc[0]
+            
+            # id_subcategoria
+            id_subcategoria = df_subcategorias[
+                df_subcategorias['dsc_subcategoriatransacao'] == novo_subcategoria
+            ]['id_subcategoria'].iloc[0]
+            
+            # id_usuario (Baseado no Usuário que Registrou: novo_usuario_registro)
+            # O valor de novo_usuario_registro vem do text_input disabled, que usa o valor scalar.
+            id_usuario = df_usuarios[
+                df_usuarios['dsc_nomeusuario'] == novo_usuario_registro
+            ]['id_usuario'].iloc[0]
+
+            # dsc_nomeusuario é o próprio novo_usuario_registro
+            dsc_nomeusuario = novo_usuario_registro
+            
+            
+            # 💡 2. CHAMADA CORRIGIDA: Passando os 15 argumentos na ordem da função
             sucesso = atualizar_transacao_por_id(
-                id_transacao, 
-                novo_valor, 
-                nova_data, 
-                novo_tipo, 
-                nova_categoria, 
-                novo_subcategoria, 
-                novo_pagador,
-                nova_descricao,
-                novo_e_dividido,
-                novo_foi_dividido
+                id_transacao,                  # 1
+                nova_data,                     # 2 -> dt_datatransacao
+                id_tipo,                       # 3 -> id_tipotransacao (NOVO)
+                novo_tipo,                     # 4 -> dsc_tipotransacao
+                id_categoria,                  # 5 -> id_categoria (NOVO)
+                nova_categoria,                # 6 -> dsc_categoriatransacao
+                id_subcategoria,               # 7 -> id_subcategoria (NOVO)
+                novo_subcategoria,             # 8 -> dsc_subcategoriatransacao
+                id_usuario,                    # 9 -> id_usuario (NOVO)
+                dsc_nomeusuario,               # 10 -> dsc_nomeusuario (NOVO)
+                nova_descricao,                # 11 -> dsc_transacao
+                novo_valor,                    # 12 -> vl_transacao
+                novo_pagador,                  # 13 -> cd_quempagou
+                novo_e_dividido,               # 14 -> cd_edividido
+                novo_foi_dividido              # 15 -> cd_foidividido
             )
             
             if sucesso:
