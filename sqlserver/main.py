@@ -1435,7 +1435,10 @@ def editar_transacao():
     df_transacoes['dt_datatransacao'] = pd.to_datetime(df_transacoes['dt_datatransacao'])
     
     # 3. Filtra o DataFrame
-    df_filtrado = df_transacoes[df_transacoes['dt_datatransacao'].dt.date >= primeiro_dia_mes_anterior]
+    df_filtrado = df_transacoes[
+        (df_transacoes['dt_datatransacao'].dt.date >= primeiro_dia_mes_anterior) & 
+        (df_transacoes['cd_foidividido'] == 'N')
+    ]
     
     # Se o DataFrame filtrado estiver vazio
     if df_filtrado.empty:
