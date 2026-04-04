@@ -875,16 +875,16 @@ def exibir_detalhe_rateio():
         return f'color: {color}'
 
     # Exibição do Resumo Total (Usando .style.format para formatar sem o R$)
-    st.dataframe(
-        df_total.style.applymap(
-            color_saldo, 
-            subset=['Saldo Total'] 
-        ).format({
-            # Formatação para xx.xxx,xx
-            'Saldo Total': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        }),
-        use_container_width=True
-    )
+    if not df_total.empty:
+        st.dataframe(
+            df_total.style.map(  # <--- MUDANÇA AQUI: applymap virou map
+                color_saldo, 
+                subset=['Saldo Total'] 
+            ).format({
+                'Saldo Total': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            }),
+            use_container_width=True
+        )
 
     st.markdown("---")
 
@@ -924,7 +924,7 @@ def exibir_detalhe_rateio():
 
     # Exibição do Resumo (Usando .style.format para formatar sem o R$)
     st.dataframe(
-        df_resumo.style.applymap(
+        df_resumo.style.map(
             color_saldo_resumo, 
             subset=['Saldo Líquido'] # Aplica a cor na coluna numérica
         ).format({
@@ -974,7 +974,7 @@ def exibir_detalhe_rateio():
 
     # Exibição do Detalhe (Usando .style.format para aplicar formatação e cor)
     st.dataframe(
-        df_detalhe.style.applymap(
+        df_detalhe.style.map(
             color_acerto_detalhe, 
             subset=['Acerto Líquido']
         ).format({
