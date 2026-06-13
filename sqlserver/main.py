@@ -9,6 +9,15 @@ import plotly.colors as colors
 import numpy as np
 import plotly.graph_objects as go
 import bcrypt
+import logging
+
+
+# --- LOGGING ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("app_financeiro")
 
 
 # --- HELPERS DE FORMATAÇÃO ---
@@ -85,12 +94,16 @@ def consultar_dados(tabela_ou_view, usar_view=True):
         # 4. Executa a query
         df = pd.read_sql(sql_query.as_string(conn), conn)
         
-    # 5. Captura TypeErrors (o erro que estava ocorrendo), erros de banco e exceções gerais
-    except (psycopg2.Error, TypeError, Exception) as e:
-        # Exibe um erro amigável
-        st.error(f"Erro ao conectar ou consultar o banco de dados para a tabela '{tabela_ou_view}'. Detalhes: {e}")
-        df = pd.DataFrame() 
-        
+    except psycopg2.Error as e:
+        logger.exception("Erro de banco ao consultar '%s'", tabela_ou_view)
+        st.error(f"Erro ao consultar o banco de dados para a tabela '{tabela_ou_view}'. Detalhes: {e}")
+        df = pd.DataFrame()
+
+    except Exception as e:
+        logger.exception("Erro inesperado ao consultar '%s'", tabela_ou_view)
+        st.error(f"Erro inesperado ao consultar a tabela '{tabela_ou_view}'. Detalhes: {e}")
+        df = pd.DataFrame()
+
     finally:
         # 6. Garante que a conexão seja fechada
         if conn is not None:
@@ -133,12 +146,12 @@ def inserir_dados(tabela, dados, campos):
         return True
         
     except psycopg2.Error as ex:
-        # ESTE BLOCO DE CÓDIGO TEM QUE SER RECÉUADO
+        logger.exception("Erro de banco ao inserir em %s", tabela_lower)
         st.error(f"Erro do banco de dados ao inserir: {ex}")
         if conn: conn.rollback()
-        
+
     except Exception as e:
-        # ESTE BLOCO DE CÓDIGO TAMBÉM TEM QUE SER RECÉUADO
+        logger.exception("Erro inesperado ao inserir em %s", tabela_lower)
         st.error(f"Erro inesperado: {e}")
         if conn: conn.rollback()
         
@@ -242,6 +255,7 @@ def formulario_tipo_transacao():
             # --- FIM BLOC DA EDIÇÃO ---
 
         except Exception as e:
+            logger.exception("Erro ao carregar dados do Tipo de Transação")
             st.error(f"Erro ao carregar dados do ID: {e}")
             
     
@@ -403,6 +417,7 @@ def formulario_categoria():
             # --- FIM BLOC DA EDIÇÃO ---
 
         except Exception as e:
+            logger.exception("Erro ao carregar dados da Categoria")
             st.error(f"Erro ao carregar dados do ID. Detalhe: {e}")
             
     
@@ -563,6 +578,7 @@ def formulario_subcategoria():
             # --- FIM BLOC DA EDIÇÃO ---
 
         except Exception as e:
+            logger.exception("Erro ao carregar dados da Subcategoria")
             st.error(f"Erro ao carregar dados do ID. Verifique se o ID existe ou se os nomes das colunas da View estão corretos: {e}")
             
     
@@ -619,6 +635,7 @@ def formulario_salario():
     try:
         df_usuarios = consultar_dados("dim_usuario")
     except Exception:
+        logger.exception("Falha ao carregar usuários no formulário de salário")
         df_usuarios = pd.DataFrame(columns=['id_usuario', 'dsc_nome'])
 
     if df_usuarios.empty:
@@ -995,12 +1012,13 @@ def atualizar_status_acerto(lista_ids):
         return True
         
     except psycopg2.Error as ex:
-        # st.error deve estar acessível se essa função for chamada em um contexto Streamlit
+        logger.exception("Erro de banco ao realizar acerto múltiplo")
         st.error(f"Erro do banco de dados ao realizar acerto múltiplo: {ex}")
         if conn: conn.rollback()
         return False
         
     except Exception as e:
+        logger.exception("Erro inesperado ao realizar acerto múltiplo")
         st.error(f"Erro inesperado ao realizar acerto múltiplo: {e}")
         if conn: conn.rollback()
         return False
@@ -1121,9 +1139,14 @@ def buscar_transacao_por_id(id_transacao):
         conn = get_connection()
         df_transacao = pd.read_sql(sql_query, conn, params=(id_transacao,))
         
-    except (psycopg2.Error, Exception) as e: 
+    except psycopg2.Error as e:
+        logger.exception("Erro de banco ao buscar transação por ID %s", id_transacao)
         st.error(f"Erro ao buscar transação por ID: {e}")
         # df_transacao permanece o DataFrame vazio inicializado acima.
+
+    except Exception as e:
+        logger.exception("Erro inesperado ao buscar transação por ID %s", id_transacao)
+        st.error(f"Erro inesperado ao buscar transação por ID: {e}")
 
     finally:
         if conn:
@@ -1204,11 +1227,13 @@ def atualizar_transacao_por_id(
         return True
         
     except psycopg2.Error as ex:
+        logger.exception("Erro de banco ao atualizar transação")
         st.error(f"Erro do banco de dados ao atualizar transação: {ex}")
         if conn: conn.rollback()
         return False
         
     except Exception as e:
+        logger.exception("Erro inesperado ao atualizar transação")
         st.error(f"Erro inesperado ao atualizar transação: {e}")
         if conn: conn.rollback()
         return False
@@ -1240,6 +1265,10 @@ def exibir_formulario_edicao(id_transacao):
     # Subcategorias (dim_subcategoria)
     df_subcategorias = consultar_dados("dim_subcategoria", usar_view=False)
     subcategorias_nomes = df_subcategorias['dsc_subcategoriatransacao'].tolist() if not df_subcategorias.empty and 'dsc_subcategoriatransacao' in df_subcategorias.columns else []
+
+    # Tipos de Transação (dim_tipotransacao) - IDs reais vindos do banco
+    df_tipos = consultar_dados("dim_tipotransacao", usar_view=False)
+    tipos_map = dict(zip(df_tipos['dsc_tipotransacao'], df_tipos['id_tipotransacao'])) if not df_tipos.empty else {}
     
     
     # 3. PREPARAR VALORES PADRÃO
@@ -1253,8 +1282,8 @@ def exibir_formulario_edicao(id_transacao):
     # Conversão segura para o st.date_input
     data_atual_dt = data_transacao_valor.date() if isinstance(data_transacao_valor, datetime.datetime) else data_transacao_valor
 
-    # O Tipo de Transação deve usar uma lista fixa (Receita/Despesa)
-    tipos_transacao = ['Despesas', 'Receitas'] # Use a sua lista real
+    # Lista de Tipos de Transação derivada do banco (dim_tipotransacao)
+    tipos_transacao = list(tipos_map.keys())
     
     # 4. FORMULÁRIO PRÉ-PREENCHIDO
     with st.form("edicao_transacao_form"):
@@ -1340,11 +1369,10 @@ def exibir_formulario_edicao(id_transacao):
 
         if submitted:
             # 1. Lógica para buscar os IDs necessários a partir das descrições (Lookups)
-            
-            # id_tipotransacao (Assumindo que 1=Despesas, 2=Receitas)
-            # Este já é um int nativo
-            id_tipo = 1 if novo_tipo == 'Despesas' else 2
-            
+
+            # id_tipotransacao (ID real obtido do banco via dim_tipotransacao)
+            id_tipo = int(tipos_map[novo_tipo])
+
             # id_categoria
             # Conversão para int() nativo
             id_categoria = int(df_categorias[
@@ -1504,11 +1532,13 @@ def deletar_registro_dimensao(tabela, id_coluna, id_registro):
         return True
         
     except psycopg2.Error as ex:
+        logger.exception("Erro de banco ao deletar em %s", tabela_lower)
         st.error(f"Erro do banco de dados ao deletar em {tabela_lower}: {ex}")
         if conn: conn.rollback()
         return False
-        
+
     except Exception as e:
+        logger.exception("Erro inesperado ao deletar em %s", tabela_lower)
         st.error(f"Erro inesperado: {e}")
         if conn: conn.rollback()
         return False
@@ -1551,11 +1581,13 @@ def atualizar_registro_dimensao(tabela, id_coluna, id_registro, campos_valores):
         return True
         
     except psycopg2.Error as ex:
+        logger.exception("Erro de banco ao atualizar em %s", tabela_lower)
         st.error(f"Erro do banco de dados ao atualizar em {tabela_lower}: {ex}")
         if conn: conn.rollback()
         return False
-        
+
     except Exception as e:
+        logger.exception("Erro inesperado ao atualizar em %s", tabela_lower)
         st.error(f"Erro inesperado: {e}")
         if conn: conn.rollback()
         return False
@@ -1615,6 +1647,7 @@ def _migrar_senha_para_hash(conn, id_usuario, senha_digitada):
         )
         conn.commit()
     except Exception as e:
+        logger.warning("Falha ao migrar senha para hash: %s", e)
         # Falha na migração não deve impedir o login; apenas registra.
         conn.rollback()
         print(f"Aviso: não foi possível migrar a senha para hash: {e}")
@@ -1654,6 +1687,7 @@ def autenticar_usuario(login, senha):
                 }
 
     except Exception as e:
+        logger.exception("Erro na autenticação de usuário")
         st.error("Ocorreu um erro na autenticação. Verifique a conexão com o banco de dados e as credenciais.")
         print(f"Erro de autenticação: {e}")
         usuario_info = {}
@@ -1850,6 +1884,7 @@ def dashboard():
         df_salario = consultar_dados("fact_salario")
         
     except Exception as e:
+        logger.exception("Erro ao carregar dados de transação/salário no dashboard")
         st.warning(f"Não foi possível carregar os dados de transação/salário. Verifique as tabelas. Erro: {e}")
         return
 
