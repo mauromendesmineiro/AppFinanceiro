@@ -8,6 +8,7 @@ import psycopg2
 import streamlit as st
 from helpers import logger
 
+@st.cache_resource
 def get_engine():
     """Cria uma única vez um engine SQLAlchemy com pool de conexões (Postgres/Neon).
 
@@ -40,7 +41,8 @@ def get_connection():
     """
     return get_engine().raw_connection()
 
-def consultar_dados(tabela_ou_view, usar_view=True): 
+@st.cache_data(ttl=3600)
+def consultar_dados(tabela_ou_view, usar_view=True):
     """
     Consulta dados de uma tabela ou view e retorna um DataFrame.
 
@@ -57,12 +59,12 @@ def consultar_dados(tabela_ou_view, usar_view=True):
     try:
         engine = get_engine()
 
-        # Monta a query com o identificador citado de forma segura. O render do
-        # identificador usa uma conexão bruta do pool, devolvida logo em seguida.
+        # Monta a query com o identificador citado de forma segura. O render exige
+        # a conexão psycopg2 real (raw.driver_connection), e não o wrapper do pool.
         sql_query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(tabela_ou_view))
         raw = engine.raw_connection()
         try:
-            query_str = sql_query.as_string(raw)
+            query_str = sql_query.as_string(raw.driver_connection)
         finally:
             raw.close()
 
