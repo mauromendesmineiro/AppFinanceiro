@@ -3,8 +3,11 @@ import pandas as pd
 import plotly.express as px
 import datetime
 from dateutil.relativedelta import relativedelta
-import psycopg2 
+import psycopg2
 from psycopg2 import sql
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
+from sqlalchemy.exc import SQLAlchemyError
 import plotly.colors as colors
 import numpy as np
 import plotly.graph_objects as go
@@ -49,20 +52,39 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-#@st.cache_resource(ttl=600) 
-def get_connection():
+@st.cache_resource
+def get_engine():
+    """Cria uma única vez um engine SQLAlchemy com pool de conexões (Postgres/Neon).
+
+    O pool é compartilhado entre reruns/sessões do Streamlit (via cache_resource),
+    evitando abrir uma conexão TCP nova a cada query. `pool_pre_ping` descarta
+    conexões mortas (ex.: timeout do Neon) antes de reutilizá-las.
+    """
     # As credenciais são carregadas do secrets.toml (bloco [postgresql])
-    conn_details = st.secrets["postgresql"] 
-    
-    conn = psycopg2.connect(
-        host=conn_details["server"],
-        database=conn_details["database"],
-        user=conn_details["username"],
+    conn_details = st.secrets["postgresql"]
+    url = URL.create(
+        "postgresql+psycopg2",
+        username=conn_details["username"],
         password=conn_details["password"],
+        host=conn_details["server"],
         port=conn_details["port"],
-        sslmode='require' # O Neon exige SSL
+        database=conn_details["database"],
     )
-    return conn
+    return create_engine(
+        url,
+        connect_args={"sslmode": "require"},  # O Neon exige SSL
+        pool_pre_ping=True,
+        pool_recycle=600,
+    )
+
+
+def get_connection():
+    """Retorna uma conexão psycopg2 obtida do pool do engine.
+
+    Compatível com o uso existente (cursor/commit/rollback/close). O `.close()`
+    devolve a conexão ao pool em vez de encerrar o socket.
+    """
+    return get_engine().raw_connection()
 
 @st.cache_data(ttl=3600)
 def consultar_dados(tabela_ou_view, usar_view=True): 
@@ -75,26 +97,26 @@ def consultar_dados(tabela_ou_view, usar_view=True):
                           a chamada de outras funções (não tem efeito 
                           no corpo desta função atualmente).
     """
-    tabela_ou_view = tabela_ou_view.lower() 
+    tabela_ou_view = tabela_ou_view.lower()
 
-    conn = None 
     df = pd.DataFrame()
-    
+
     try:
-        # 1. Tenta obter a conexão (a falha aqui é a causa raiz do problema de ambiente)
-        conn = get_connection() 
-        
-        # 2. Verificação explícita para o caso de get_connection() falhar e retornar None
-        if conn is None:
-            raise Exception("A conexão ao banco de dados falhou ou retornou None.") 
-            
-        # 3. Monta a query com segurança
+        engine = get_engine()
+
+        # Monta a query com o identificador citado de forma segura. O render do
+        # identificador usa uma conexão bruta do pool, devolvida logo em seguida.
         sql_query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(tabela_ou_view))
-        
-        # 4. Executa a query
-        df = pd.read_sql(sql_query.as_string(conn), conn)
-        
-    except psycopg2.Error as e:
+        raw = engine.raw_connection()
+        try:
+            query_str = sql_query.as_string(raw)
+        finally:
+            raw.close()
+
+        # Lê passando o engine SQLAlchemy (evita o UserWarning do pandas).
+        df = pd.read_sql(text(query_str), engine)
+
+    except SQLAlchemyError as e:
         logger.exception("Erro de banco ao consultar '%s'", tabela_ou_view)
         st.error(f"Erro ao consultar o banco de dados para a tabela '{tabela_ou_view}'. Detalhes: {e}")
         df = pd.DataFrame()
@@ -104,11 +126,6 @@ def consultar_dados(tabela_ou_view, usar_view=True):
         st.error(f"Erro inesperado ao consultar a tabela '{tabela_ou_view}'. Detalhes: {e}")
         df = pd.DataFrame()
 
-    finally:
-        # 6. Garante que a conexão seja fechada
-        if conn is not None:
-            conn.close()
-            
     return df
 
 def limpar_cache_dados():
@@ -1123,23 +1140,22 @@ def pagina_acerto_controle():
         acerto_multiplo_transacoes()
 
 def buscar_transacao_por_id(id_transacao):
-    conn = None
     df_transacao = pd.DataFrame()
-    
-    # 1. Tabela stg_transacoes em minúsculo
-    tabela = 'stg_transacoes'
-    
-    # 2. Uso do placeholder %s para PostgreSQL
-    sql_query = f"""
-        SELECT * FROM {tabela} 
-        WHERE id_transacao = %s
-    """
-    
+
+    # Tabela stg_transacoes — parâmetro nomeado (:id_transacao) para o engine.
+    sql_query = text("""
+        SELECT * FROM stg_transacoes
+        WHERE id_transacao = :id_transacao
+    """)
+
     try:
-        conn = get_connection()
-        df_transacao = pd.read_sql(sql_query, conn, params=(id_transacao,))
-        
-    except psycopg2.Error as e:
+        df_transacao = pd.read_sql(
+            sql_query,
+            get_engine(),
+            params={"id_transacao": id_transacao},
+        )
+
+    except SQLAlchemyError as e:
         logger.exception("Erro de banco ao buscar transação por ID %s", id_transacao)
         st.error(f"Erro ao buscar transação por ID: {e}")
         # df_transacao permanece o DataFrame vazio inicializado acima.
@@ -1148,10 +1164,6 @@ def buscar_transacao_por_id(id_transacao):
         logger.exception("Erro inesperado ao buscar transação por ID %s", id_transacao)
         st.error(f"Erro inesperado ao buscar transação por ID: {e}")
 
-    finally:
-        if conn:
-            conn.close()
-            
     # Retorna um DataFrame (1 linha ou vazio)
     return df_transacao
 

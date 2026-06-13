@@ -82,8 +82,8 @@ a duplicação e o caminho inseguro.
 | 4.2 | ✅ `formatar_moeda` e funções de cor (`color_saldo`, etc.) duplicadas em vários pontos | Consolidadas nos helpers globais `formatar_moeda`, `_para_float_br` e `cor_saldo` |
 | 4.3 | ✅ `except (psycopg2.Error, TypeError, Exception)` e `except Exception:` silencioso | Tuplas redundantes separadas em `psycopg2.Error` + fallback; logging (`logger.exception`) adicionado em todos os handlers |
 | 4.4 | ✅ `id_tipo = 1 if novo_tipo == 'Despesas' else 2` (IDs mágicos) | Substituído por lookup real via `tipos_map` de `dim_tipotransacao`; lista de tipos do form de edição também vem do banco |
-| 4.5 | `pd.read_sql` gera `UserWarning` (recomenda SQLAlchemy) | Considerar engine SQLAlchemy ou suprimir conscientemente |
-| 4.6 | `get_connection` abre conexão nova a cada query; `@st.cache_resource` está comentado | Avaliar pool/cache de conexão |
+| 4.5 | ✅ `pd.read_sql` gera `UserWarning` (recomenda SQLAlchemy) | Reads passam o engine SQLAlchemy (`pd.read_sql(text(...), engine)`); `buscar_transacao_por_id` usa parâmetro nomeado |
+| 4.6 | ✅ `get_connection` abre conexão nova a cada query; `@st.cache_resource` está comentado | Engine SQLAlchemy com pool cacheado (`@st.cache_resource`, `pool_pre_ping`, `pool_recycle`); `get_connection()` devolve conexão do pool |
 | 4.7 | ✅ Comentários extensos de debug/histórico ("CORREÇÃO", "LINHA 82", 💡) | Ruído removido |
 | 4.8 | ✅ `requirements.txt` sem versões fixas | Versões pinadas |
 
@@ -115,6 +115,11 @@ a duplicação e o caminho inseguro.
    agora resolvidos via `dim_tipotransacao` — item 4.4.
 9. ✅ Tratamento de exceções: tuplas redundantes separadas em `psycopg2.Error`
    + fallback e introdução de `logging` em todos os handlers — item 4.3.
+10. ✅ Engine SQLAlchemy com pool de conexões (`get_engine` cacheado) — os
+    reads usam o engine, eliminando o `UserWarning` do pandas, e
+    `get_connection()` passa a devolver conexões do pool — itens 4.5 e 4.6.
+
+> ⚠️ Nova dependência: `SQLAlchemy>=2.0` (adicionada ao `requirements.txt`).
 
 A refatoração estrutural em módulos (item 4.1) fica documentada como próximo passo
 por exigir mudanças de arquitetura mais amplas, sem caráter crítico.
