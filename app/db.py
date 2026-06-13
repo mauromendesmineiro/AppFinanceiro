@@ -320,6 +320,35 @@ def deletar_registro_dimensao(tabela, id_coluna, id_registro):
     finally:
         if conn: conn.close()
 
+def deletar_transacoes(lista_ids):
+    conn = None
+    if not lista_ids:
+        return True
+
+    sql_delete = "DELETE FROM stg_transacoes WHERE id_transacao = ANY(%s);"
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(sql_delete, (lista_ids,))
+        conn.commit()
+        return True
+
+    except psycopg2.Error as ex:
+        logger.exception("Erro de banco ao deletar transações")
+        st.error(f"Erro do banco de dados ao deletar transações: {ex}")
+        if conn: conn.rollback()
+        return False
+
+    except Exception as e:
+        logger.exception("Erro inesperado ao deletar transações")
+        st.error(f"Erro inesperado ao deletar transações: {e}")
+        if conn: conn.rollback()
+        return False
+
+    finally:
+        if conn: conn.close()
+
 def atualizar_registro_dimensao(tabela, id_coluna, id_registro, campos_valores):
     conn = None
 

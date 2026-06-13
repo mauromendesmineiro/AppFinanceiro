@@ -95,8 +95,7 @@ a duplicação e o caminho inseguro.
 - Exportar dados (CSV/Excel) das transações e do acerto.
 - Confirmação visual padronizada para exclusões (hoje cada formulário reimplementa).
 - Indicadores-resumo (KPIs) no topo do Dashboard.
-
----
+- ✅ Na parte de correção, implementar a possibilidade de excluir um registro (por vezes, é registrado uma transação duplicada, sendo necessário excluir)
 
 ## 6. O que foi alterado neste branch
 

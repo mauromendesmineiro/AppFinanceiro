@@ -4,7 +4,7 @@ import datetime
 import pandas as pd
 import streamlit as st
 from helpers import cor_saldo, formatar_moeda, logger
-from db import atualizar_registro_dimensao, atualizar_status_acerto, atualizar_transacao_por_id, buscar_transacao_por_id, consultar_dados, deletar_registro_dimensao, inserir_dados
+from db import atualizar_registro_dimensao, atualizar_status_acerto, atualizar_transacao_por_id, buscar_transacao_por_id, consultar_dados, deletar_registro_dimensao, deletar_transacoes, inserir_dados
 
 def reset_categoria():
     """Reseta a Categoria e Subcategoria ao mudar o Tipo de Transação."""
@@ -914,23 +914,84 @@ def acerto_multiplo_transacoes():
                 else:
                     st.error("Falha ao atualizar o status de acerto no banco de dados.")
 
+def excluir_transacoes_duplicadas():
+    st.subheader("Excluir Transações")
+    st.markdown("Selecione as transações duplicadas ou incorretas para excluí-las permanentemente.")
+
+    df_todas = consultar_dados("stg_transacoes", usar_view=False)
+    if df_todas.empty:
+        st.info("Nenhuma transação encontrada.")
+        return
+
+    df_todas = df_todas.sort_values(by='dt_datatransacao', ascending=False).reset_index(drop=True)
+
+    colunas_exibicao = ['id_transacao', 'dt_datatransacao', 'dsc_transacao', 'vl_transacao',
+                        'dsc_categoriatransacao', 'dsc_nomeusuario', 'cd_foidividido']
+    colunas_presentes = [c for c in colunas_exibicao if c in df_todas.columns]
+    df_exibicao = df_todas[colunas_presentes]
+
+    config = {
+        "dt_datatransacao": st.column_config.DatetimeColumn("Data", format="YYYY-MM-DD"),
+        "vl_transacao": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f"),
+        "id_transacao": st.column_config.NumberColumn("ID"),
+        "dsc_transacao": st.column_config.TextColumn("Descrição"),
+        "dsc_categoriatransacao": st.column_config.TextColumn("Categoria"),
+        "dsc_nomeusuario": st.column_config.TextColumn("Usuário"),
+        "cd_foidividido": st.column_config.TextColumn("Acertado"),
+    }
+
+    selecao = st.dataframe(
+        df_exibicao,
+        column_config=config,
+        hide_index=True,
+        use_container_width=True,
+        selection_mode="multi-row",
+        on_select="rerun",
+    )
+
+    indices_selecionados = selecao.selection.rows
+    ids_selecionados = []
+    if indices_selecionados:
+        df_sel = df_todas.iloc[indices_selecionados]
+        ids_selecionados = df_sel['id_transacao'].tolist()
+
+    st.caption(f"**{len(ids_selecionados)} transação(ões) selecionada(s)**")
+
+    if ids_selecionados:
+        with st.expander("⚠️ Confirmar exclusão", expanded=True):
+            st.warning(
+                f"Você está prestes a excluir **{len(ids_selecionados)} transação(ões)** de forma permanente. "
+                "Esta ação não pode ser desfeita."
+            )
+            df_confirmacao = df_todas[df_todas['id_transacao'].isin(ids_selecionados)][colunas_presentes]
+            st.dataframe(df_confirmacao, column_config=config, hide_index=True, use_container_width=True)
+
+            if st.button("🗑️ Confirmar e Excluir", type="primary"):
+                with st.spinner("Excluindo transações..."):
+                    sucesso = deletar_transacoes(ids_selecionados)
+                if sucesso:
+                    st.success(f"{len(ids_selecionados)} transação(ões) excluída(s) com sucesso!")
+                    consultar_dados.clear()
+                    st.rerun()
+
 def pagina_acerto_controle():
     st.title("💰 Gestão de Acertos e Rateio")
 
     # Usamos st.tabs para organizar as funcionalidades
-    tab_detalhe, tab_acerto_multiplo = st.tabs(["📊 Detalhe e Rateio de Contas", "✅ Acerto Múltiplo"])
+    tab_detalhe, tab_acerto_multiplo, tab_excluir = st.tabs([
+        "📊 Detalhe e Rateio de Contas",
+        "✅ Acerto Múltiplo",
+        "🗑️ Excluir Transação",
+    ])
 
-    # --- ABA 1: Fluxo Original de Detalhe/Rateio ---
     with tab_detalhe:
-        # Chama a função que você já tem para mostrar o rateio e detalhes
-        # Se for a função original, chame-a aqui.
-        exibir_detalhe_rateio() # Supondo que você tem esta função
-        # Se você ainda não tem, substitua pela sua lógica de detalhe e rateio
+        exibir_detalhe_rateio()
 
-    # --- ABA 2: Novo Fluxo de Acerto Múltiplo ---
     with tab_acerto_multiplo:
-        # Chama a nova função que criamos na resposta anterior
         acerto_multiplo_transacoes()
+
+    with tab_excluir:
+        excluir_transacoes_duplicadas()
 
 def exibir_formulario_edicao(id_transacao):
     st.subheader(f"2. Editando Transação ID: {id_transacao}")
