@@ -79,13 +79,13 @@ a duplicação e o caminho inseguro.
 | # | Item | Situação |
 |---|------|----------|
 | 4.1 | Arquivo único de ~2.300 linhas | Sugerido dividir em `db.py`, `forms.py`, `dashboard.py`, `auth.py` |
-| 4.2 | `formatar_moeda` e funções de cor (`color_saldo`, etc.) duplicadas em vários pontos | Extrair para helpers únicos |
+| 4.2 | ✅ `formatar_moeda` e funções de cor (`color_saldo`, etc.) duplicadas em vários pontos | Consolidadas nos helpers globais `formatar_moeda`, `_para_float_br` e `cor_saldo` |
 | 4.3 | `except (psycopg2.Error, TypeError, Exception)` e `except:` pelado | Usar exceções específicas e logging |
 | 4.4 | `id_tipo = 1 if novo_tipo == 'Despesas' else 2` (IDs mágicos) | Buscar IDs reais no banco |
 | 4.5 | `pd.read_sql` gera `UserWarning` (recomenda SQLAlchemy) | Considerar engine SQLAlchemy ou suprimir conscientemente |
 | 4.6 | `get_connection` abre conexão nova a cada query; `@st.cache_resource` está comentado | Avaliar pool/cache de conexão |
-| 4.7 | Comentários extensos de debug/histórico ("CORREÇÃO", "LINHA 82") | Limpar ruído |
-| 4.8 | `requirements.txt` sem versões fixas | Pinar versões para builds reproduzíveis |
+| 4.7 | ✅ Comentários extensos de debug/histórico ("CORREÇÃO", "LINHA 82", 💡) | Ruído removido |
+| 4.8 | ✅ `requirements.txt` sem versões fixas | Versões pinadas |
 
 ---
 
@@ -107,6 +107,10 @@ a duplicação e o caminho inseguro.
 3. ✅ Pinagem de versões mínimas em `requirements.txt`.
 4. ✅ Este documento `MELHORIAS.md`.
 5. ✅ Hashing de senha com bcrypt e migração automática (itens 3.1 e 3.3).
+6. ✅ Consolidação das funções de formatação/cor em helpers globais
+   (`formatar_moeda`, `_para_float_br`, `cor_saldo`) — item 4.2.
+7. ✅ Limpeza de comentários de debug/histórico ("CORREÇÃO", "LINHA 82",
+   "MUDANÇA AQUI", 💡, etc.) — item 4.7.
 
-A refatoração estrutural (item 4) fica documentada como próximo passo por exigir
-mudanças de arquitetura mais amplas, sem caráter crítico.
+A refatoração estrutural em módulos (item 4.1) fica documentada como próximo passo
+por exigir mudanças de arquitetura mais amplas, sem caráter crítico.

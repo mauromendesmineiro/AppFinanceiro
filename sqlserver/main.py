@@ -10,6 +10,30 @@ import numpy as np
 import plotly.graph_objects as go
 import bcrypt
 
+
+# --- HELPERS DE FORMATAÇÃO ---
+def formatar_moeda(valor):
+    """Formata um número no padrão monetário brasileiro (1.234,56), sem o prefixo R$."""
+    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _para_float_br(valor):
+    """Converte um valor possivelmente em string no formato brasileiro para float."""
+    if isinstance(valor, str):
+        try:
+            return float(valor.replace(".", "").replace(",", "."))
+        except ValueError:
+            return 0.0
+    return valor
+
+
+def cor_saldo(valor):
+    """Retorna o estilo CSS de cor (verde/vermelho/preto) conforme o sinal do valor."""
+    valor = _para_float_br(valor)
+    cor = "red" if valor < 0 else "green" if valor > 0 else "black"
+    return f"color: {cor}"
+
+
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
     layout="wide",  # Define a largura máxima como a largura do navegador
@@ -108,7 +132,7 @@ def inserir_dados(tabela, dados, campos):
         
         return True
         
-    except psycopg2.Error as ex: # <<< LINHA 82 (Provavelmente este bloco)
+    except psycopg2.Error as ex:
         # ESTE BLOCO DE CÓDIGO TEM QUE SER RECÉUADO
         st.error(f"Erro do banco de dados ao inserir: {ex}")
         if conn: conn.rollback()
@@ -118,7 +142,7 @@ def inserir_dados(tabela, dados, campos):
         st.error(f"Erro inesperado: {e}")
         if conn: conn.rollback()
         
-    finally: # <<< LINHA 85 (Deve estar alinhada com try e except)
+    finally:
         if conn: conn.close()
 
 def formulario_tipo_transacao():
@@ -147,7 +171,7 @@ def formulario_tipo_transacao():
                 st.warning("O campo Descrição é obrigatório.")
 
     # ----------------------------------------------------
-    # B) VISUALIZAÇÃO E SELEÇÃO MANUAL (CORREÇÃO DA LÓGICA)
+    # B) VISUALIZAÇÃO E SELEÇÃO MANUAL
     # ----------------------------------------------------
     st.markdown("---")
     st.subheader("2. Editar ou Excluir Registros Existentes")
@@ -301,7 +325,7 @@ def formulario_categoria():
         return
 
     # ----------------------------------------------------------------------
-    # CORREÇÃO CRÍTICA DO KEYERROR: As chaves do dicionário são em minúsculo
+    # As chaves do dicionário são em minúsculo
     # ----------------------------------------------------------------------
     df_exibicao = df_categorias.rename(columns={
         'id': 'ID',                         # Coluna do DF: 'id' -> Exibição: 'ID'
@@ -453,14 +477,14 @@ def formulario_subcategoria():
     st.markdown("---")
     st.subheader("2. Editar ou Excluir Registros Existentes")
     
-    # *** USANDO A VIEW INFORMADA PELO USUÁRIO (vw_dim_subcategoria) ***
+    # Usa a view vw_dim_subcategoria
     df_subcategorias = consultar_dados("vw_dim_subcategoria") 
     
     if df_subcategorias.empty:
         st.info("Nenhuma subcategoria registrada.")
         return
 
-    # *** CORREÇÃO DO KEY ERROR: Mapeando chaves em minúsculo ***
+    # Mapeia as chaves em minúsculo
     df_exibicao = df_subcategorias.rename(columns={
         'id': 'ID',                         # Mapeia 'id' (minúsculo)
         'subcategoria': 'Descrição',        # Mapeia 'subcategoria' (minúsculo)
@@ -593,7 +617,6 @@ def formulario_salario():
 
     # 1. Consulta o Usuário para o Dropdown
     try:
-        # CORREÇÃO: Argumento 'usar_view=False' REMOVIDO
         df_usuarios = consultar_dados("dim_usuario")
     except Exception:
         df_usuarios = pd.DataFrame(columns=['id_usuario', 'dsc_nome'])
@@ -645,16 +668,11 @@ def formulario_salario():
     st.subheader("Salários Registrados")
     
     # 1. Consulta a View que já tem o Nome do Usuário, Ano e Mês
-    # CORREÇÃO: Argumento 'usar_view=True' REMOVIDO
-    df_salarios = consultar_dados("vw_fact_salarios") 
+    df_salarios = consultar_dados("vw_fact_salarios")
 
     if not df_salarios.empty:
-        
-        # 2. Função de Formatação (deve ser definida no escopo global ou localmente)
-        def formatar_moeda(x):
-            return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        
-        # 3. Renomeação das Colunas para Exibição
+
+        # Renomeação das Colunas para Exibição
         df_exibicao = df_salarios.rename(columns={
             'nomeusuario': 'Usuário', 
             'vl_salario': 'Valor do Salário',
@@ -705,13 +723,13 @@ def formulario_transacao():
     try:
         id_usuario_logado = st.session_state.id_usuario_logado
         # Usamos o nome completo (dsc_nome) para exibição e registro na tabela
-        nome_usuario = st.session_state.nome_completo # <<--- ALTERAÇÃO PRINCIPAL AQUI
+        nome_usuario = st.session_state.nome_completo
         
     except AttributeError:
         st.error("Erro de Sessão: As variáveis de usuário logado (id_usuario_logado e nome_completo) não estão configuradas na sessão.")
         return
     
-    # CRÍTICO: ALTERAÇÃO NA EXIBIÇÃO PARA USAR O NOME COMPLETO
+    # Exibição usa o nome completo
     #st.info(f"Usuário (Quem Registrou) **automaticamente** definido como: **{nome_usuario}**")
     # --------------------------------------------------------
 
@@ -824,7 +842,7 @@ def formulario_transacao():
             
             # --- USO DOS DADOS VINCULADOS ---
             id_usuario_final = id_usuario_logado
-            usuario_nome_final = nome_usuario # <--- NOME COMPLETO USADO NO REGISTRO
+            usuario_nome_final = nome_usuario
             # -------------------------------
             
             id_tipo = int(tipos_map[tipo_nome])
@@ -870,19 +888,14 @@ def exibir_detalhe_rateio():
         'vl_saldototal': 'Saldo Total'
     }, inplace=True)
     
-    # Função de estilo (reutilizando a lógica de cor)
-    def color_saldo(val):
-        color = 'red' if val < 0 else 'green' if val > 0 else 'black'
-        return f'color: {color}'
-
-    # Exibição do Resumo Total (Usando .style.format para formatar sem o R$)
+    # Exibição do Resumo Total (formatado sem o prefixo R$)
     if not df_total.empty:
         st.dataframe(
-            df_total.style.map(  # <--- MUDANÇA AQUI: applymap virou map
-                color_saldo, 
-                subset=['Saldo Total'] 
+            df_total.style.map(
+                cor_saldo,
+                subset=['Saldo Total']
             ).format({
-                'Saldo Total': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                'Saldo Total': formatar_moeda
             }),
             use_container_width=True
         )
@@ -907,34 +920,18 @@ def exibir_detalhe_rateio():
         'vl_saldoacertomensal': 'Saldo Líquido'
     }, inplace=True)
 
-    # 💡 INCLUSÃO AQUI: Ordena o DataFrame por Ano (ASC) e Mês (ASC)
+    # Ordena o DataFrame por Ano e Mês (crescente)
     df_resumo.sort_values(by=['Ano', 'Mês'], inplace=True)
 
-    # Função de estilo para o Resumo (CORRIGIDO A SINTAXE E ESPERA O VALOR NUMÉRICO)
-    def color_saldo_resumo(val):
-        # Garante que val é um número
-        if isinstance(val, str):
-            try:
-                # Lida com o formato brasileiro para conversão
-                val = float(val.replace('.', '').replace(',', '.'))
-            except ValueError:
-                val = 0
-                
-        color = 'red' if val < 0 else 'green' if val > 0 else 'black'
-        return f'color: {color}'
-
-    # Exibição do Resumo (Usando .style.format para formatar sem o R$)
+    # Exibição do Resumo (formatado sem o prefixo R$)
     st.dataframe(
         df_resumo.style.map(
-            color_saldo_resumo, 
-            subset=['Saldo Líquido'] # Aplica a cor na coluna numérica
+            cor_saldo,
+            subset=['Saldo Líquido']
         ).format({
-        # 💡 CORREÇÃO 1: Formata 'Ano' como inteiro (sem decimais)
-        'Ano': "{:.0f}",
-        # 💡 CORREÇÃO 2: Formata 'Mês' como inteiro (sem decimais)
-        'Mês': "{:.0f}", 
-        # Formatação para xx.xxx,xx
-        'Saldo Líquido': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            'Ano': "{:.0f}",
+            'Mês': "{:.0f}",
+            'Saldo Líquido': formatar_moeda
         }),
         column_order=['Ano', 'Mês', 'Usuário', 'Saldo Líquido'],
         use_container_width=True
@@ -947,7 +944,7 @@ def exibir_detalhe_rateio():
     # ----------------------------------------------------------------------
     st.subheader("Detalhe das Transações Pendentes de Acerto")
     
-    # Usando o nome da View que você indicou: vw_acertodetalhe
+    # View de detalhe: vw_acertodetalhe
     df_detalhe = consultar_dados("vw_acertodetalhe") 
 
     # Renomeação do Detalhe
@@ -961,28 +958,15 @@ def exibir_detalhe_rateio():
         'vl_acertotransacao': 'Acerto Líquido'
     }, inplace=True)
     
-    # Função de estilo para o Detalhe
-    def color_acerto_detalhe(val):
-        # A função de cor agora recebe o valor numérico
-        if isinstance(val, str):
-            try:
-                val = float(val.replace('.', '').replace(',', '.'))
-            except ValueError:
-                val = 0
-                
-        color = 'red' if val < 0 else 'green' if val > 0 else 'black'
-        return f'color: {color}'
-
-    # Exibição do Detalhe (Usando .style.format para aplicar formatação e cor)
+    # Exibição do Detalhe (formatação de moeda + cor por sinal)
     st.dataframe(
         df_detalhe.style.map(
-            color_acerto_detalhe, 
+            cor_saldo,
             subset=['Acerto Líquido']
         ).format({
-            # Formatação de moeda para todas as colunas de valor
-            'Total da Transação': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-            'Devido (Parte Dele)': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-            'Acerto Líquido': lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            'Total da Transação': formatar_moeda,
+            'Devido (Parte Dele)': formatar_moeda,
+            'Acerto Líquido': formatar_moeda
         }),
         use_container_width=True
     )
@@ -993,7 +977,7 @@ def atualizar_status_acerto(lista_ids):
     if not lista_ids:
         return True 
 
-    # 💡 Query usa UNNEST para desempacotar a lista de IDs do Python em valores SQL
+    # Query usa UNNEST para desempacotar a lista de IDs do Python em valores SQL
     sql_update = """
         UPDATE stg_transacoes SET
             cd_foidividido = 'S'
@@ -1060,20 +1044,20 @@ def acerto_multiplo_transacoes():
         "vl_transacao": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f")
     }
 
-    # 💡 st.dataframe é o elemento correto para seleção!
+    # st.dataframe é o elemento correto para seleção!
     selecao_evento = st.dataframe(
         df_exibicao,
         column_config=config,
         hide_index=True,
         use_container_width=True,
-        # 💡 Chave para ativação da seleção
+        # Chave para ativação da seleção
         selection_mode="multi-row", 
         # on_select="rerun" é opcional, mas ativa o widget para interação imediata
         on_select="rerun" 
     )
 
     # 3. CAPTURAR OS IDs SELECIONADOS
-    # 💡 A seleção é capturada diretamente do objeto retornado (selecao_evento)
+    # A seleção é capturada diretamente do objeto retornado (selecao_evento)
     indices_selecionados = selecao_evento.selection.rows
     
     ids_selecionados = []
@@ -1105,7 +1089,7 @@ def acerto_multiplo_transacoes():
 def pagina_acerto_controle():
     st.title("💰 Gestão de Acertos e Rateio")
 
-    # 💡 Usamos st.tabs para organizar as funcionalidades
+    # Usamos st.tabs para organizar as funcionalidades
     tab_detalhe, tab_acerto_multiplo = st.tabs(["📊 Detalhe e Rateio de Contas", "✅ Acerto Múltiplo"])
 
     # --- ABA 1: Fluxo Original de Detalhe/Rateio ---
@@ -1207,7 +1191,7 @@ def atualizar_transacao_por_id(
         cd_quempagou, 
         cd_edividido, 
         cd_foidividido,
-        id_transacao # <<< O valor do WHERE (o último %s)
+        id_transacao  # valor do WHERE (último %s)
     )
 
     try:
@@ -1219,7 +1203,7 @@ def atualizar_transacao_por_id(
         conn.commit()
         return True
         
-    except psycopg2.Error as ex: # <<< CORREÇÃO DO DRIVER
+    except psycopg2.Error as ex:
         st.error(f"Erro do banco de dados ao atualizar transação: {ex}")
         if conn: conn.rollback()
         return False
@@ -1238,7 +1222,7 @@ def exibir_formulario_edicao(id_transacao):
     # 1. BUSCAR DADOS ATUAIS DA TRANSAÇÃO
     dados_atuais = buscar_transacao_por_id(id_transacao)
     
-    # 💡 CORREÇÃO: Verificação única. Se o DataFrame veio vazio, sai.
+    # Verificação única. Se o DataFrame veio vazio, sai.
     if dados_atuais.empty: 
         st.error(f"Não foi possível carregar os dados da transação com ID {id_transacao} ou a transação não foi encontrada.")
         return # Sai da função
@@ -1260,7 +1244,7 @@ def exibir_formulario_edicao(id_transacao):
     
     # 3. PREPARAR VALORES PADRÃO
     
-    # 💡 Extração única dos dados para um acesso mais limpo e seguro
+    # Extração única dos dados para um acesso mais limpo e seguro
     dados_atuais_scalar = dados_atuais.iloc[0]
     
     # Acesso seguro ao valor escalar da data
@@ -1284,11 +1268,11 @@ def exibir_formulario_edicao(id_transacao):
         with col2:
             novo_tipo = st.selectbox("Tipo de Transação:", 
                                      tipos_transacao, 
-                                     # 💡 Usando o valor escalar
+                                     # Usando o valor escalar
                                      index=tipos_transacao.index(dados_atuais_scalar['dsc_tipotransacao']))
 
         with col3:
-            # 💡 Usando o valor escalar
+            # Usando o valor escalar
             novo_usuario_registro = st.text_input("Usuário (Quem Registrou):", 
                                                   value=dados_atuais_scalar['dsc_nomeusuario'], # Corrigido para dsc_nomeusuario
                                                   disabled=True) 
@@ -1314,14 +1298,14 @@ def exibir_formulario_edicao(id_transacao):
                                              index=subcategorias_nomes.index(subcategoria_atual))
             
         with col6:
-            # 💡 Usando o valor escalar e conversão para float
+            # Usando o valor escalar e conversão para float
             novo_valor = st.number_input("Valor da Transação:", 
                                          value=float(dados_atuais_scalar['vl_transacao']), 
                                          min_value=0.01, 
                                          format="%.2f")
         
         # LINHA 3: Descrição Detalhada
-        # 💡 Usando o valor escalar
+        # Usando o valor escalar
         nova_descricao = st.text_area("Descrição Detalhada:", 
                                       value=dados_atuais_scalar['dsc_transacao'])
 
@@ -1355,26 +1339,26 @@ def exibir_formulario_edicao(id_transacao):
         submitted = st.form_submit_button("Salvar Correção")
 
         if submitted:
-            # 💡 1. Lógica para buscar os IDs necessários a partir das descrições (Lookups)
+            # 1. Lógica para buscar os IDs necessários a partir das descrições (Lookups)
             
             # id_tipotransacao (Assumindo que 1=Despesas, 2=Receitas)
             # Este já é um int nativo
             id_tipo = 1 if novo_tipo == 'Despesas' else 2
             
             # id_categoria
-            # CORREÇÃO: Conversão para int() nativo
+            # Conversão para int() nativo
             id_categoria = int(df_categorias[
                 df_categorias['dsc_categoriatransacao'] == nova_categoria
             ]['id_categoria'].iloc[0])
             
             # id_subcategoria
-            # CORREÇÃO: Conversão para int() nativo
+            # Conversão para int() nativo
             id_subcategoria = int(df_subcategorias[
                 df_subcategorias['dsc_subcategoriatransacao'] == novo_subcategoria
             ]['id_subcategoria'].iloc[0])
             
             # id_usuario
-            # CORREÇÃO: Conversão para int() nativo
+            # Conversão para int() nativo
             id_usuario = int(df_usuarios[
                 df_usuarios['dsc_nome'] == novo_usuario_registro 
             ]['id_usuario'].iloc[0])
@@ -1383,7 +1367,7 @@ def exibir_formulario_edicao(id_transacao):
             dsc_nomeusuario = novo_usuario_registro
             
             
-            # 💡 2. CHAMADA CORRIGIDA: Os argumentos agora são tipos nativos
+            # 2. Argumentos passados como tipos nativos
             sucesso = atualizar_transacao_por_id(
                 id_transacao,                  
                 nova_data,                     
@@ -1424,7 +1408,7 @@ def editar_transacao():
         st.info("Nenhuma transação registrada para editar.")
         return
 
-    # 💡 LÓGICA DE FILTRO DE DATA (INÍCIO)
+    # LÓGICA DE FILTRO DE DATA (INÍCIO)
     # 1. Calcula o primeiro dia do mês anterior
     hoje = datetime.date.today()
     primeiro_dia_mes_anterior = hoje - relativedelta(months=1)
@@ -1444,7 +1428,7 @@ def editar_transacao():
     if df_filtrado.empty:
         st.info(f"Nenhuma transação encontrada a partir de {primeiro_dia_mes_anterior.strftime('%d/%m/%Y')}.")
         return
-    # 💡 FIM DA LÓGICA DE FILTRO
+    # FIM DA LÓGICA DE FILTRO
     
     # Renomeação simplificada para o usuário escolher (Usando o DF FILTRADO)
     df_exibicao = df_filtrado.rename(columns={
@@ -1519,7 +1503,7 @@ def deletar_registro_dimensao(tabela, id_coluna, id_registro):
         conn.commit()
         return True
         
-    except psycopg2.Error as ex: # <<< CORREÇÃO DO DRIVER
+    except psycopg2.Error as ex:
         st.error(f"Erro do banco de dados ao deletar em {tabela_lower}: {ex}")
         if conn: conn.rollback()
         return False
@@ -1566,7 +1550,7 @@ def atualizar_registro_dimensao(tabela, id_coluna, id_registro, campos_valores):
         conn.commit()
         return True
         
-    except psycopg2.Error as ex: # <<< CORREÇÃO DO DRIVER
+    except psycopg2.Error as ex:
         st.error(f"Erro do banco de dados ao atualizar em {tabela_lower}: {ex}")
         if conn: conn.rollback()
         return False
@@ -2241,7 +2225,7 @@ def main():
     
     # --- 1. SIDEBAR (Menu Principal) ---
     with st.sidebar:
-        # ALTERAÇÃO 1: Usar dsc_nome (nome_completo) em vez de login
+        # Usar dsc_nome (nome_completo) em vez de login
         nome_exibido = st.session_state.get('nome_completo', st.session_state.login)
         st.title(f"Menu Principal - Logado como: {nome_exibido}")
         
@@ -2275,7 +2259,7 @@ def main():
             "💰 Salário": "Salário",
         }
         
-        # ALTERAÇÃO 2: Layout de 2 botões por linha para Cadastros
+        # Layout de 2 botões por linha para Cadastros
         opcoes_lista = list(opcoes_cadastro.keys())
         
         for i in range(0, len(opcoes_lista), 2):
@@ -2304,7 +2288,7 @@ def main():
         if st.button("♻️ Limpar Cache", on_click=limpar_cache_dados, use_container_width=True):
              pass 
         
-        # ALTERAÇÃO 3: Estilo CSS específico para o botão "🛑 Sair"
+        # Estilo CSS específico para o botão "🛑 Sair"
         st.markdown(
             """
             <style>
