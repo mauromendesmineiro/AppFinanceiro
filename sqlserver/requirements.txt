@@ -1,6 +1,6 @@
-streamlit
-pandas
-plotly
-python-dateutil
-psycopg2-binary
-numpy
+streamlit>=1.30
+pandas>=2.0
+plotly>=5.18
+python-dateutil>=2.8
+psycopg2-binary>=2.9
+numpy>=1.24

@@ -1031,12 +1031,11 @@ def acerto_multiplo_transacoes():
     # Adicionando um filtro para carregar apenas transações não acertadas ('N') e que são despesas
     # Você precisará adaptar a chamada à sua função consultar_dados
     
-    try:
-        # Se 'consultar_dados' aceitar filtros SQL (WHERE clause)
-        df_pendentes = consultar_dados("stg_transacoes", where_clause="cd_foidividido = 'N'", usar_view=False)
-    except:
-        # Alternativa mais simples: carregar tudo e filtrar no Pandas (menos eficiente)
-        df_todas = consultar_dados("stg_transacoes", usar_view=False)
+    # Carrega todas as transações e filtra as pendentes ('N') em Pandas.
+    df_todas = consultar_dados("stg_transacoes", usar_view=False)
+    if df_todas.empty or 'cd_foidividido' not in df_todas.columns:
+        df_pendentes = pd.DataFrame()
+    else:
         df_pendentes = df_todas[df_todas['cd_foidividido'] == 'N']
 
     if df_pendentes.empty:
@@ -1496,17 +1495,14 @@ def editar_transacao():
     else:
         st.info("O formulário de edição aparecerá aqui após a seleção do ID.")
 
-def deletar_registro_dimensao(tabela, id_registro):
+def deletar_registro_dimensao(tabela, id_coluna, id_registro):
     conn = None
-    
-    # 1. Garante que o nome da tabela e as colunas estão em minúsculo
+
+    # 1. Garante que o nome da tabela e a coluna de ID estão em minúsculo
     tabela_lower = tabela.lower()
-    
-    # Supõe que a chave primária da dimensão é 'id_' + nome_da_tabela
-    # Ex: 'dim_usuario' -> 'id_usuario'
-    id_coluna = f"id_{tabela_lower.split('_')[-1]}" 
-    
-    # 2. Uso do placeholder %s e injeção do nome da tabela (seguro) e da coluna (construída)
+    id_coluna = id_coluna.lower()
+
+    # 2. Uso do placeholder %s e injeção do nome da tabela e da coluna de ID
     sql_delete = f"""
         DELETE FROM {tabela_lower}
         WHERE {id_coluna} = %s;
@@ -1535,31 +1531,29 @@ def deletar_registro_dimensao(tabela, id_registro):
     finally:
         if conn: conn.close()
 
-def atualizar_registro_dimensao(tabela, campos, valores, id_registro):
+def atualizar_registro_dimensao(tabela, id_coluna, id_registro, campos_valores):
     conn = None
-    
-    # 1. Garante que o nome da tabela e as colunas estão em minúsculo
+
+    # 1. Garante que o nome da tabela e a coluna de ID estão em minúsculo
     tabela_lower = tabela.lower()
-    
-    # Supõe que a chave primária da dimensão é 'id_' + nome_da_tabela
-    # Ex: 'dim_usuario' -> 'id_usuario'
-    id_coluna = f"id_{tabela_lower.split('_')[-1]}"
-    
-    # 2. Constrói a string SET: 'campo1 = %s, campo2 = %s, ...'
-    # Converte os nomes dos campos para minúsculas para o PostgreSQL
-    set_clause = [f"{campo.lower()} = %s" for campo in campos]
-    set_clause_str = ", ".join(set_clause)
-    
+    id_coluna = id_coluna.lower()
+
+    # 2. Constrói a string SET a partir do dicionário {coluna: valor}
+    #    Ex: {'dsc_categoriatransacao': 'Lazer'} -> 'dsc_categoriatransacao = %s'
+    colunas = list(campos_valores.keys())
+    valores = list(campos_valores.values())
+    set_clause_str = ", ".join(f"{coluna.lower()} = %s" for coluna in colunas)
+
     # 3. Constrói o SQL de UPDATE
     sql_update = f"""
         UPDATE {tabela_lower} SET
             {set_clause_str}
-        WHERE {id_coluna} = %s; 
+        WHERE {id_coluna} = %s;
     """
-    
+
     # 4. Constrói a tupla de valores: (valores_a_atualizar) + (id_registro)
     # A tupla de valores deve ser a lista de novos valores, seguida pelo ID para o WHERE
-    valores_com_id = list(valores) + [id_registro]
+    valores_com_id = valores + [id_registro]
 
     try:
         conn = get_connection()
