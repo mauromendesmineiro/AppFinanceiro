@@ -3,7 +3,16 @@
 Aplicação **Streamlit + PostgreSQL/Neon** para controle de gastos do casal
 (modelo dimensional `dim_*` / `fact_*` / `stg_transacoes`).
 
-O código da aplicação fica em [`sqlserver/main.py`](sqlserver/main.py).
+O código fica no pacote [`app/`](app/), organizado em módulos:
+
+| Módulo | Responsabilidade |
+|--------|------------------|
+| `app/main.py` | Entrypoint Streamlit: configuração da página, sessão e navegação |
+| `app/db.py` | Acesso a dados (engine SQLAlchemy, pool e operações de BD) |
+| `app/helpers.py` | Helpers de formatação e logging |
+| `app/auth.py` | Autenticação (bcrypt, login, migração de senha) |
+| `app/forms.py` | Formulários de cadastro/edição e telas de acerto |
+| `app/dashboard.py` | Dashboard (gráficos, projeções e KPIs) |
 
 ## Requisitos
 
@@ -13,7 +22,7 @@ O código da aplicação fica em [`sqlserver/main.py`](sqlserver/main.py).
 ## Ambiente e dependências
 
 As dependências diretas são declaradas em `pyproject.toml` e travadas em
-`uv.lock` (versões reproduzíveis). O `sqlserver/requirements.txt` é **gerado**
+`uv.lock` (versões reproduzíveis). O `requirements.txt` (raiz) é **gerado**
 a partir do lock (usado no deploy do Streamlit Cloud) — não edite à mão.
 
 ```bash
@@ -27,7 +36,7 @@ Comandos úteis:
 uv add <pacote>           # adiciona dependência (atualiza pyproject + uv.lock)
 uv lock --upgrade         # atualiza o lock respeitando as restrições
 # Regenera o requirements.txt derivado após mudar dependências:
-uv export --no-hashes --no-emit-project --no-dev -o sqlserver/requirements.txt
+uv export --no-hashes --no-emit-project --no-dev -o requirements.txt
 ```
 
 ## Credenciais (secrets)
@@ -47,7 +56,7 @@ port     = "5432"
 ## Executar
 
 ```bash
-uv run streamlit run sqlserver/main.py
+uv run streamlit run app/main.py
 ```
 
 > A senha em `dim_usuario.senha` é armazenada com **bcrypt**. No primeiro login

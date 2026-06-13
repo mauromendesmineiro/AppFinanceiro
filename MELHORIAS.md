@@ -78,7 +78,7 @@ a duplicação e o caminho inseguro.
 
 | # | Item | Situação |
 |---|------|----------|
-| 4.1 | Arquivo único de ~2.300 linhas | Sugerido dividir em `db.py`, `forms.py`, `dashboard.py`, `auth.py` |
+| 4.1 | ✅ Arquivo único de ~2.390 linhas | Dividido no pacote `app/` (`main`, `db`, `helpers`, `auth`, `forms`, `dashboard`); pasta `sqlserver/` removida e `requirements.txt` movido para a raiz |
 | 4.2 | ✅ `formatar_moeda` e funções de cor (`color_saldo`, etc.) duplicadas em vários pontos | Consolidadas nos helpers globais `formatar_moeda`, `_para_float_br` e `cor_saldo` |
 | 4.3 | ✅ `except (psycopg2.Error, TypeError, Exception)` e `except Exception:` silencioso | Tuplas redundantes separadas em `psycopg2.Error` + fallback; logging (`logger.exception`) adicionado em todos os handlers |
 | 4.4 | ✅ `id_tipo = 1 if novo_tipo == 'Despesas' else 2` (IDs mágicos) | Substituído por lookup real via `tipos_map` de `dim_tipotransacao`; lista de tipos do form de edição também vem do banco |
@@ -121,5 +121,12 @@ a duplicação e o caminho inseguro.
 
 > ⚠️ Nova dependência: `SQLAlchemy>=2.0` (adicionada ao `requirements.txt`).
 
-A refatoração estrutural em módulos (item 4.1) fica documentada como próximo passo
-por exigir mudanças de arquitetura mais amplas, sem caráter crítico.
+11. ✅ Ambiente reprodutível com **uv** (`pyproject.toml` + `uv.lock`);
+    `requirements.txt` passou a ser gerado a partir do lock.
+12. ✅ Modularização do `main.py` no pacote `app/` (`main`, `db`, `helpers`,
+    `auth`, `forms`, `dashboard`); pasta `sqlserver/` removida — item 4.1.
+
+> ⚠️ Após o deploy: atualizar o **"Main file path"** no Streamlit Cloud de
+> `sqlserver/main.py` para `app/main.py`.
+
+**Todos os itens do plano (2 a 4) foram concluídos.**
