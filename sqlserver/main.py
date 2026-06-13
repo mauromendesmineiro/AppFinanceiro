@@ -1294,8 +1294,13 @@ def exibir_formulario_edicao(id_transacao):
     # Conversão segura para o st.date_input
     data_atual_dt = data_transacao_valor.date() if isinstance(data_transacao_valor, datetime.datetime) else data_transacao_valor
 
-    # Lista de Tipos de Transação derivada do banco (dim_tipotransacao)
+    # Lista de Tipos de Transação derivada do banco (dim_tipotransacao). Garante
+    # que o tipo atual da transação esteja presente para não quebrar o selectbox
+    # caso a dimensão divirja dos dados gravados.
     tipos_transacao = list(tipos_map.keys())
+    tipo_atual = dados_atuais_scalar['dsc_tipotransacao']
+    if tipo_atual not in tipos_transacao:
+        tipos_transacao.append(tipo_atual)
     
     # 4. FORMULÁRIO PRÉ-PREENCHIDO
     with st.form("edicao_transacao_form"):
@@ -1307,10 +1312,9 @@ def exibir_formulario_edicao(id_transacao):
             nova_data = st.date_input("Data da Transação:", value=data_atual_dt)
             
         with col2:
-            novo_tipo = st.selectbox("Tipo de Transação:", 
-                                     tipos_transacao, 
-                                     # Usando o valor escalar
-                                     index=tipos_transacao.index(dados_atuais_scalar['dsc_tipotransacao']))
+            novo_tipo = st.selectbox("Tipo de Transação:",
+                                     tipos_transacao,
+                                     index=tipos_transacao.index(tipo_atual))
 
         with col3:
             # Usando o valor escalar
