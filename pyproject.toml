@@ -1,0 +1,15 @@
+[project]
+name = "app-financeiro"
+version = "0.1.0"
+description = "App financeiro (Streamlit + PostgreSQL/Neon) para controle de gastos do casal."
+requires-python = ">=3.11"
+dependencies = [
+    "bcrypt>=4.0",
+    "numpy>=1.24",
+    "pandas>=2.0,<3",
+    "plotly>=5.18",
+    "psycopg2-binary>=2.9",
+    "python-dateutil>=2.8",
+    "sqlalchemy>=2.0",
+    "streamlit>=1.30",
+]
