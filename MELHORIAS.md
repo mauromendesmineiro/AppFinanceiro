@@ -51,19 +51,26 @@ em Pandas de forma explícita.
 
 ## 3. Segurança (prioridade alta)
 
-### 3.1 Senhas em texto plano
-`autenticar_usuario` e `login_page` comparam `senha = %s` diretamente, o que
-indica que as senhas estão **armazenadas sem hash** em `dim_usuario`. Recomenda-se
-migrar para hash com `bcrypt`/`argon2` e nunca comparar texto plano.
-> Não alterado automaticamente: exige migração de dados no banco.
+### 3.1 ✅ Senhas em texto plano
+`autenticar_usuario` e `login_page` comparavam `senha = %s` diretamente, com as
+senhas **armazenadas sem hash** em `dim_usuario`.
+**Correção:** implementado hashing **bcrypt** com helpers `gerar_hash_senha`,
+`verificar_senha` e `_migrar_senha_para_hash`. A `autenticar_usuario` agora valida
+a senha em Python (suporta hash) e faz **migração automática e suave**: no primeiro
+login bem-sucedido com senha legada (texto plano), o valor é regravado como hash.
+Nenhum login atual quebra.
+> ⚠️ Ação no banco: garantir que `dim_usuario.senha` comporte ≥ 60 caracteres
+> (`VARCHAR(255)` ou `TEXT`). Não há troca de SGBD nem script de migração manual.
 
 ### 3.2 Credenciais e SSL
 Conexão usa `st.secrets` (correto) e `sslmode='require'` (correto). Manter o
 `secrets.toml` fora do versionamento (já coberto pelo `.gitignore`).
 
-### 3.3 Código duplicado de autenticação
-`autenticar_usuario()` existe mas **não é usada** — `login_page()` refaz a query
-inline. Consolidar em uma única função.
+### 3.3 ✅ Código duplicado de autenticação
+`autenticar_usuario()` existia mas **não era usada** — `login_page()` refazia a
+query inline com comparação em texto plano.
+**Correção:** `login_page()` agora delega para `autenticar_usuario()`, eliminando
+a duplicação e o caminho inseguro.
 
 ---
 
@@ -99,6 +106,7 @@ inline. Consolidar em uma única função.
    e do `except:` pelado.
 3. ✅ Pinagem de versões mínimas em `requirements.txt`.
 4. ✅ Este documento `MELHORIAS.md`.
+5. ✅ Hashing de senha com bcrypt e migração automática (itens 3.1 e 3.3).
 
-Itens de segurança (hash de senha) e refatoração estrutural ficam documentados
-como próximos passos por exigirem mudanças de banco/arquitetura mais amplas.
+A refatoração estrutural (item 4) fica documentada como próximo passo por exigir
+mudanças de arquitetura mais amplas, sem caráter crítico.
