@@ -86,68 +86,80 @@ def criar_grafico_saldo_combinado(df_saldo, titulo):
     return fig
 
 def projetar_dados_futuro(df_passado, df_futuro_agregado, meses_futuro_ref):
-    # 1. Calcular as Médias Mensais Históricas (dos últimos 13 meses)
+    # 1. Histórico — unifica 'Receita (Salário)' em 'Receita' para o cálculo
+    df_hist = df_passado.copy()
+    df_hist['Tipo_agg'] = df_hist['Tipo'].replace({'Receita (Salário)': 'Receita'})
+    df_hist['mes_num'] = df_hist['ano_mes'].str[-2:].astype(int)
 
-    # Filtrar Receita e Despesa do passado para calcular a média
-    df_receita_despesa_passada = df_passado[
-        df_passado['Tipo'].isin(['Receita', 'Despesa'])
-    ].copy()
-
-    media_mensal = df_receita_despesa_passada.groupby('Tipo')['Valor'].mean().reset_index()
-    media_receita = media_mensal[media_mensal['Tipo'] == 'Receita']['Valor'].iloc[0] if 'Receita' in media_mensal['Tipo'].values else 0
-    media_despesa = media_mensal[media_mensal['Tipo'] == 'Despesa']['Valor'].iloc[0] if 'Despesa' in media_mensal['Tipo'].values else 0
-
-    # 2. Criar o DataFrame de Projeção
-    df_projecao = pd.DataFrame({'ano_mes': meses_futuro_ref})
-
-    # Preenche inicialmente com as médias históricas
-    df_projecao['Receita_Projetada'] = media_receita
-    df_projecao['Despesa_Projetada'] = media_despesa
-
-    # 3. Incorporar dados já AGENDADOS
-    df_futuro_pivot = df_futuro_agregado.pivot_table(
-        index='ano_mes',
-        columns='Tipo',
-        values='Valor',
-        aggfunc='sum'
-    ).fillna(0)
-
-    # Combina Receita e Receita (Salário) nos dados futuros
-    df_futuro_pivot['Receita_Agendada'] = df_futuro_pivot.get('Receita', 0) + df_futuro_pivot.get('Receita (Salário)', 0)
-    df_futuro_pivot['Despesa_Agendada'] = df_futuro_pivot.get('Despesa', 0)
-
-    # Juntar os dados agendados com a projeção
-    df_projecao = df_projecao.set_index('ano_mes').join(
-        df_futuro_pivot[['Receita_Agendada', 'Despesa_Agendada']], 
-        how='left'
-    ).reset_index().fillna(0)
-
-    # 4. Regra de Projeção Final: Se Agendado > 0, usar Agendado; senão, usar Projetado.
-    df_projecao['Receita'] = np.where(
-        df_projecao['Receita_Agendada'] > 0, 
-        df_projecao['Receita_Agendada'], 
-        df_projecao['Receita_Projetada']
+    # Agrega por mês e tipo unificado (soma receita + salário no mesmo mês)
+    df_hist_agg = (
+        df_hist.groupby(['ano_mes', 'mes_num', 'Tipo_agg'])['Valor']
+        .sum()
+        .reset_index()
     )
 
-    df_projecao['Despesa'] = np.where(
-        df_projecao['Despesa_Agendada'] > 0, 
-        df_projecao['Despesa_Agendada'], 
-        df_projecao['Despesa_Projetada']
+    # Média sazonal: média histórica para cada mês do ano (ex: média de todos os janeiros)
+    media_sazonal = (
+        df_hist_agg.groupby(['mes_num', 'Tipo_agg'])['Valor']
+        .mean()
+        .reset_index()
+        .rename(columns={'Valor': 'media'})
     )
 
-    # 5. Calcular o Saldo Final
-    df_projecao['Saldo_Mensal'] = df_projecao['Receita'] - df_projecao['Despesa']
+    # Média geral como fallback (caso não haja histórico para aquele mês específico)
+    media_geral = df_hist_agg.groupby('Tipo_agg')['Valor'].mean()
+    media_rec_geral = float(media_geral.get('Receita', 0))
+    media_dep_geral = float(media_geral.get('Despesa', 0))
 
-    # 6. Transformar para o formato longo (para plotly)
-    df_saldo_futuro_final = pd.melt(
+    # 2. Dados já agendados no futuro
+    if not df_futuro_agregado.empty:
+        df_futuro_pivot = df_futuro_agregado.pivot_table(
+            index='ano_mes', columns='Tipo', values='Valor', aggfunc='sum'
+        ).fillna(0)
+        for col in ['Receita', 'Receita (Salário)', 'Despesa']:
+            if col not in df_futuro_pivot.columns:
+                df_futuro_pivot[col] = 0.0
+        df_futuro_pivot['Receita_Agendada'] = df_futuro_pivot['Receita'] + df_futuro_pivot['Receita (Salário)']
+        df_futuro_pivot['Despesa_Agendada'] = df_futuro_pivot['Despesa']
+    else:
+        df_futuro_pivot = pd.DataFrame(columns=['Receita_Agendada', 'Despesa_Agendada'])
+
+    # 3. Projeção mês a mês
+    rows = []
+    for mes_str in meses_futuro_ref:
+        mes_num = int(mes_str[-2:])
+
+        # Média sazonal para este mês do ano (fallback: média geral)
+        rec_saz = media_sazonal[(media_sazonal['mes_num'] == mes_num) & (media_sazonal['Tipo_agg'] == 'Receita')]
+        dep_saz = media_sazonal[(media_sazonal['mes_num'] == mes_num) & (media_sazonal['Tipo_agg'] == 'Despesa')]
+        media_rec = float(rec_saz['media'].iloc[0]) if not rec_saz.empty else media_rec_geral
+        media_dep = float(dep_saz['media'].iloc[0]) if not dep_saz.empty else media_dep_geral
+
+        # Agendado para este mês
+        rec_agend = float(df_futuro_pivot.loc[mes_str, 'Receita_Agendada']) if mes_str in df_futuro_pivot.index else 0.0
+        dep_agend = float(df_futuro_pivot.loc[mes_str, 'Despesa_Agendada']) if mes_str in df_futuro_pivot.index else 0.0
+
+        # Regra: max(agendado, média histórica sazonal)
+        # Garante que lançamentos parciais não subestimam a projeção
+        receita_final = max(rec_agend, media_rec)
+        despesa_final = max(dep_agend, media_dep)
+
+        rows.append({
+            'ano_mes': mes_str,
+            'Receita': receita_final,
+            'Despesa': despesa_final,
+            'Saldo_Mensal': receita_final - despesa_final,
+        })
+
+    df_projecao = pd.DataFrame(rows)
+
+    return pd.melt(
         df_projecao,
         id_vars=['ano_mes'],
         value_vars=['Receita', 'Despesa', 'Saldo_Mensal'],
         var_name='Tipo',
-        value_name='Valor'
+        value_name='Valor',
     )
-
-    return df_saldo_futuro_final
 
 def dashboard():
     st.title("📊 Dashboard Financeiro")
