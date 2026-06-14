@@ -114,7 +114,7 @@ def inserir_dados(tabela, dados, campos):
 
         # Feedback de Sucesso no Streamlit (Opcional, mas recomendado)
         st.success(f"Registro inserido com sucesso na tabela {tabela_lower.upper()}!")
-
+        consultar_dados.clear()
         return True
 
     except psycopg2.Error as ex:
@@ -227,6 +227,7 @@ def atualizar_transacao_por_id(
         # Execução: Passa o SQL e a tupla de valores
         cursor.execute(sql_update, valores)
         conn.commit()
+        consultar_dados.clear()
         return True
 
     except psycopg2.Error as ex:
@@ -264,7 +265,7 @@ def atualizar_status_acerto(lista_ids):
         # O argumento é uma tupla contendo a lista (array) de IDs
         cursor.execute(sql_update, (lista_ids,))
         conn.commit()
-
+        consultar_dados.clear()
         return True
 
     except psycopg2.Error as ex:
@@ -300,9 +301,9 @@ def deletar_registro_dimensao(tabela, id_coluna, id_registro):
         cursor = conn.cursor()
 
         # 3. Execução: Passa o ID como uma tupla
-        cursor.execute(sql_delete, (id_registro,)) 
-
+        cursor.execute(sql_delete, (id_registro,))
         conn.commit()
+        consultar_dados.clear()
         return True
 
     except psycopg2.Error as ex:
@@ -332,6 +333,7 @@ def deletar_transacoes(lista_ids):
         cursor = conn.cursor()
         cursor.execute(sql_delete, (lista_ids,))
         conn.commit()
+        consultar_dados.clear()
         return True
 
     except psycopg2.Error as ex:
@@ -379,8 +381,9 @@ def atualizar_registro_dimensao(tabela, id_coluna, id_registro, campos_valores):
 
         # Execução: Passa o SQL e a tupla de valores
         # O psycopg2 faz o bind dos %s com os valores na ordem
-        cursor.execute(sql_update, valores_com_id) 
+        cursor.execute(sql_update, valores_com_id)
         conn.commit()
+        consultar_dados.clear()
         return True
 
     except psycopg2.Error as ex:
