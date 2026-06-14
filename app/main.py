@@ -4,7 +4,6 @@ st.set_page_config(
     layout="wide",  # Define a largura máxima como a largura do navegador
     initial_sidebar_state="auto"
 )
-from db import limpar_cache_dados
 from auth import login_page
 from forms import formulario_categoria, formulario_salario, formulario_subcategoria, formulario_tipo_transacao, formulario_transacao, formulario_usuario, pagina_acerto_controle
 from dashboard import dashboard
@@ -82,9 +81,6 @@ def main():
 
         # Botões de Logout/Cache
         st.markdown("---")
-
-        if st.button("♻️ Limpar Cache", on_click=limpar_cache_dados, use_container_width=True):
-             pass 
 
         # Estilo CSS específico para o botão "🛑 Sair"
         st.markdown(
