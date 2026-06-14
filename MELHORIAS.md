@@ -91,11 +91,11 @@ a duplicação e o caminho inseguro.
 
 ## 5. UX e funcionalidades futuras
 
-- Filtros de período no Dashboard (hoje fixos em 13 meses passados / 12 futuros).
-- Exportar dados (CSV/Excel) das transações e do acerto.
-- Confirmação visual padronizada para exclusões (hoje cada formulário reimplementa).
-- Indicadores-resumo (KPIs) no topo do Dashboard.
-- ✅ Na parte de correção, implementar a possibilidade de excluir um registro (por vezes, é registrado uma transação duplicada, sendo necessário excluir)
+- ✅ Filtros de período no Dashboard — sliders configuráveis (meses passado/futuro) em expander.
+- ✅ Confirmação visual padronizada para exclusões — helper `_bloco_confirmacao_exclusao` reutilizado em Tipo, Categoria e Subcategoria.
+- ✅ Indicadores-resumo (KPIs) no topo do Dashboard — Receitas, Despesas e Saldo do mês atual.
+- ✅ Na parte de correção, implementar a possibilidade de excluir um registro (por vezes, é registrado uma transação duplicada, sendo necessário excluir).
+- ✅ Unificação de Acerto e Corrigir — tudo em `pagina_acerto_controle` com 4 abas: Detalhe, Acerto Múltiplo, Excluir, Corrigir. Botão "Corrigir" removido do menu lateral.
 
 ## 6. O que foi alterado neste branch
 

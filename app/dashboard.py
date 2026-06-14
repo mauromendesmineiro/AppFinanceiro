@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from helpers import logger
+from helpers import formatar_moeda, logger
 from db import consultar_dados
 
 def gerar_meses_futuros(data_inicio, n_meses):
@@ -207,31 +207,59 @@ def dashboard():
     df_dados_mensais = df_dados_mensais.groupby(['ano_mes', 'Tipo'])['Valor'].sum().reset_index()
 
 
-    PALETA_CORES = px.colors.qualitative.Plotly 
+    PALETA_CORES = px.colors.qualitative.Plotly
+
+    today = datetime.date.today()
+
+    # -----------------------------------------------------------------
+    # KPIs — mês atual
+    # -----------------------------------------------------------------
+    mes_atual_str = today.strftime('%Y-%m')
+    df_kpi = df_dados_mensais[df_dados_mensais['ano_mes'] == mes_atual_str]
+    if not df_kpi.empty:
+        df_kpi_pivot = df_kpi.pivot_table(index='ano_mes', columns='Tipo', values='Valor', aggfunc='sum').fillna(0)
+        receita_kpi = float(df_kpi_pivot['Receita'].sum() if 'Receita' in df_kpi_pivot.columns else 0)
+        receita_kpi += float(df_kpi_pivot['Receita (Salário)'].sum() if 'Receita (Salário)' in df_kpi_pivot.columns else 0)
+        despesa_kpi = float(df_kpi_pivot['Despesa'].sum() if 'Despesa' in df_kpi_pivot.columns else 0)
+    else:
+        receita_kpi, despesa_kpi = 0.0, 0.0
+    saldo_kpi = receita_kpi - despesa_kpi
+
+    col_k1, col_k2, col_k3 = st.columns(3)
+    col_k1.metric("Receitas (mês atual)", f"R$ {formatar_moeda(receita_kpi)}")
+    col_k2.metric("Despesas (mês atual)", f"R$ {formatar_moeda(despesa_kpi)}")
+    col_k3.metric("Saldo (mês atual)", f"R$ {formatar_moeda(saldo_kpi)}", delta=round(saldo_kpi, 2))
+
+    st.markdown("---")
 
     # -----------------------------------------------------------------
     # FILTRO DE TEMPO
     # -----------------------------------------------------------------
-    today = datetime.date.today()
+    with st.expander("⚙️ Configurar período de análise", expanded=False):
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            n_meses_passado = st.slider("Meses no passado", min_value=1, max_value=36, value=13, key="dash_meses_passado")
+        with col_f2:
+            n_meses_futuro = st.slider("Meses no futuro", min_value=1, max_value=24, value=12, key="dash_meses_futuro")
 
-    # 1. VISÃO PASSADA (13 meses: OUT/2024 até o mês atual - Out/2025)
-    start_date_passado = today.replace(day=1) - relativedelta(months=12)
-    end_limit_passado = today.replace(day=1) + relativedelta(months=1) 
+    # 1. VISÃO PASSADA
+    start_date_passado = today.replace(day=1) - relativedelta(months=n_meses_passado - 1)
+    end_limit_passado = today.replace(day=1) + relativedelta(months=1)
 
     meses_passado = [
         (today.replace(day=1) - relativedelta(months=i)).strftime('%Y-%m')
-        for i in range(12, -1, -1)
+        for i in range(n_meses_passado - 1, -1, -1)
     ]
 
     df_passado_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_passado)].copy()
 
-    # 2. VISÃO FUTURA (12 meses: Próximo mês - Nov/2025 até Out/2026)
+    # 2. VISÃO FUTURA
     start_date_futuro = today.replace(day=1) + relativedelta(months=1)
-    end_date_futuro = start_date_futuro + relativedelta(months=12)
+    end_date_futuro = start_date_futuro + relativedelta(months=n_meses_futuro)
 
     meses_futuro = [
         (start_date_futuro + relativedelta(months=i)).strftime('%Y-%m')
-        for i in range(12) 
+        for i in range(n_meses_futuro)
     ]
 
     df_futuro_saldo = df_dados_mensais[df_dados_mensais['ano_mes'].isin(meses_futuro)].copy()
@@ -263,7 +291,7 @@ def dashboard():
     with col_saldo_passado:
         st.subheader("Balanço Mensal (Passado)")
         if not df_saldo_passado_final.empty:
-            fig3 = criar_grafico_saldo_combinado(df_saldo_passado_final, 'Receitas, Despesas e Saldo (Últimos 13 Meses)')
+            fig3 = criar_grafico_saldo_combinado(df_saldo_passado_final, f'Receitas, Despesas e Saldo (Últimos {n_meses_passado} Meses)')
             st.plotly_chart(fig3, use_container_width=True)
         else:
             st.info("Dados de balanço insuficientes no período passado.")
@@ -271,7 +299,7 @@ def dashboard():
     with col_saldo_futuro:
         st.subheader("Projeção de Balanço (Futuro)")
         if not df_saldo_futuro_final.empty:
-            fig4 = criar_grafico_saldo_combinado(df_saldo_futuro_final, 'Projeção de Balanço (Próximos 12 Meses)')
+            fig4 = criar_grafico_saldo_combinado(df_saldo_futuro_final, f'Projeção de Balanço (Próximos {n_meses_futuro} Meses)')
             st.plotly_chart(fig4, use_container_width=True)
         else:
             st.info("Nenhuma projeção de transação disponível para o período futuro.")
@@ -306,7 +334,7 @@ def dashboard():
                 x='ano_mes',
                 y='vl_transacao',
                 color='dsc_categoriatransacao',
-                title='Passado (Últimos 13 Meses)',
+                title=f'Passado (Últimos {n_meses_passado} Meses)',
                 labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
                 category_orders={"ano_mes": meses_ordenados, "dsc_categoriatransacao": categoria_ordenada},
                 color_discrete_sequence=PALETA_CORES 
@@ -340,7 +368,7 @@ def dashboard():
                 x='ano_mes',
                 y='vl_transacao',
                 color='dsc_categoriatransacao',
-                title='Futuro (Próximos 12 Meses)',
+                title=f'Futuro (Próximos {n_meses_futuro} Meses)',
                 labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
                 category_orders={"ano_mes": meses_futuros_ordenados, "dsc_categoriatransacao": categoria_futura_ordenada},
                 color_discrete_sequence=PALETA_CORES 
@@ -426,7 +454,7 @@ def dashboard():
                 x='ano_mes',
                 y='vl_transacao',
                 color='dsc_subcategoriatransacao',
-                title='Passado (Últimos 13 Meses)',
+                title=f'Passado (Últimos {n_meses_passado} Meses)',
                 labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
                 category_orders={"ano_mes": meses_ordenados, "dsc_subcategoriatransacao": subcategoria_ordenada},
                 color_discrete_sequence=PALETA_CORES 
@@ -461,7 +489,7 @@ def dashboard():
                 x='ano_mes',
                 y='vl_transacao',
                 color='dsc_subcategoriatransacao',
-                title='Futuro (Próximos 12 Meses)',
+                title=f'Futuro (Próximos {n_meses_futuro} Meses)',
                 labels={'ano_mes': 'Mês/Ano', 'vl_transacao': 'Valor Total'},
                 category_orders={"ano_mes": meses_futuros_ordenados, "dsc_subcategoriatransacao": subcategoria_futura_ordenada},
                 color_discrete_sequence=PALETA_CORES 

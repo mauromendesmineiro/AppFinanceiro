@@ -6,10 +6,10 @@ st.set_page_config(
 )
 from db import limpar_cache_dados
 from auth import login_page
-from forms import editar_transacao, formulario_categoria, formulario_salario, formulario_subcategoria, formulario_tipo_transacao, formulario_transacao, formulario_usuario, pagina_acerto_controle
+from forms import formulario_categoria, formulario_salario, formulario_subcategoria, formulario_tipo_transacao, formulario_transacao, formulario_usuario, pagina_acerto_controle
 from dashboard import dashboard
 if 'menu_selecionado' not in st.session_state:
-    st.session_state.menu_selecionado = "Registrar Transação"
+    st.session_state.menu_selecionado = "Dashboard"
 
 def main():
     # Inicializa o estado de login
@@ -43,14 +43,8 @@ def main():
             if st.button("💵 Transação", key="btn_transacao", use_container_width=True):
                 st.session_state.menu_selecionado = "Transação"
 
-        col3, col4 = st.columns(2)
-
-        with col3:
-            if st.button("💰 Acerto", key="btn_acerto", use_container_width=True):
-                st.session_state.menu_selecionado = "Acerto de Contas"
-        with col4:
-            if st.button("🛠️ Corrigir", key="btn_corrigir", use_container_width=True):
-                st.session_state.menu_selecionado = "Corrigir Transação"
+        if st.button("💰 Acerto & Correção", key="btn_acerto", use_container_width=True):
+            st.session_state.menu_selecionado = "Acerto de Contas"
 
         st.subheader("Cadastros (Dimensões)")
 
@@ -126,8 +120,6 @@ def main():
         formulario_transacao()
     elif opcao_atual == "Salário":
         formulario_salario()
-    elif opcao_atual == "Corrigir Transação": 
-        editar_transacao()
     elif opcao_atual == "Acerto de Contas":
         pagina_acerto_controle()
     elif opcao_atual == "Tipos de Transação":

@@ -6,6 +6,25 @@ import streamlit as st
 from helpers import cor_saldo, formatar_moeda, logger
 from db import atualizar_registro_dimensao, atualizar_status_acerto, atualizar_transacao_por_id, buscar_transacao_por_id, consultar_dados, deletar_registro_dimensao, deletar_transacoes, inserir_dados
 
+def _bloco_confirmacao_exclusao(chave_id, chave_nome, mensagem_aviso, fn_deletar):
+    id_del = st.session_state.get(chave_id)
+    if not id_del:
+        return
+    nome_del = st.session_state.get(chave_nome, "")
+    st.markdown("---")
+    st.error(f"⚠️ CONFIRMAÇÃO DE EXCLUSÃO: {mensagem_aviso.format(nome=nome_del, id=id_del)}")
+    col_sim, col_nao = st.columns(2)
+    with col_sim:
+        if st.button("SIM, EXCLUIR PERMANENTEMENTE", key=f"del_sim_{chave_id}"):
+            if fn_deletar(id_del):
+                st.success(f"Registro ID {id_del} excluído com sucesso.")
+                st.session_state[chave_id] = None
+                st.rerun()
+    with col_nao:
+        if st.button("CANCELAR Exclusão", key=f"del_nao_{chave_id}"):
+            st.session_state[chave_id] = None
+            st.rerun()
+
 def reset_categoria():
     """Reseta a Categoria e Subcategoria ao mudar o Tipo de Transação."""
     # Define a chave de Categoria para o primeiro valor (index=0)
@@ -116,27 +135,12 @@ def formulario_tipo_transacao():
             st.error(f"Erro ao carregar dados do ID: {e}")
 
 
-    # --- LÓGICA DE CONFIRMAÇÃO DE EXCLUSÃO ---
-    if st.session_state.get('confirm_delete_id_tipo'):
-        id_del = st.session_state.confirm_delete_id_tipo
-        nome_del = st.session_state.confirm_delete_nome_tipo
-
-        st.markdown("---")
-        st.error(f"⚠️ CONFIRMAÇÃO DE EXCLUSÃO: Tem certeza que deseja EXCLUIR o tipo '{nome_del}' (ID {id_del})? Esta ação é irreversível e pode causar erros de integridade em Transações.")
-
-        col_conf_sim, col_conf_nao = st.columns(2)
-
-        with col_conf_sim:
-            if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_tipo_sim"):
-                # Assumindo que deletar_registro_dimensao está definida
-                if deletar_registro_dimensao("dim_tipotransacao", "id_tipotransacao", id_del):
-                    st.success(f"Tipo ID {id_del} excluído com sucesso.")
-                    st.session_state.confirm_delete_id_tipo = None
-                    st.rerun()
-        with col_conf_nao:
-            if st.button("CANCELAR Exclusão", key="final_delete_tipo_nao"):
-                st.session_state.confirm_delete_id_tipo = None
-                st.rerun()
+    _bloco_confirmacao_exclusao(
+        'confirm_delete_id_tipo',
+        'confirm_delete_nome_tipo',
+        "Tem certeza que deseja EXCLUIR o tipo '{nome}' (ID {id})? Esta ação é irreversível e pode causar erros de integridade em Transações.",
+        lambda id_del: deletar_registro_dimensao("dim_tipotransacao", "id_tipotransacao", id_del),
+    )
 
 def formulario_categoria():
     st.header("Cadastro e Manutenção de Categorias")
@@ -278,27 +282,12 @@ def formulario_categoria():
             st.error(f"Erro ao carregar dados do ID. Detalhe: {e}")
 
 
-    # --- LÓGICA DE CONFIRMAÇÃO DE EXCLUSÃO ---
-    if st.session_state.get('confirm_delete_id_cat'):
-        id_del = st.session_state.confirm_delete_id_cat
-        nome_del = st.session_state.confirm_delete_nome_cat
-
-        st.markdown("---")
-        st.error(f"⚠️ CONFIRMAÇÃO DE EXCLUSÃO: Tem certeza que deseja EXCLUIR a Categoria '{nome_del}' (ID {id_del})? Esta ação é irreversível e impedirá a exclusão se houver Subcategorias ou Transações vinculadas.")
-
-        col_conf_sim, col_conf_nao = st.columns(2)
-
-        with col_conf_sim:
-            if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_cat_sim"):
-                # O nome da tabela e da coluna ID são passados em minúsculo
-                if deletar_registro_dimensao("dim_categoria", "id_categoria", id_del):
-                    st.success(f"Categoria ID {id_del} excluída com sucesso.")
-                    st.session_state.confirm_delete_id_cat = None
-                    st.rerun()
-        with col_conf_nao:
-            if st.button("CANCELAR Exclusão", key="final_delete_cat_nao"):
-                st.session_state.confirm_delete_id_cat = None
-                st.rerun()
+    _bloco_confirmacao_exclusao(
+        'confirm_delete_id_cat',
+        'confirm_delete_nome_cat',
+        "Tem certeza que deseja EXCLUIR a Categoria '{nome}' (ID {id})? Esta ação é irreversível e impedirá a exclusão se houver Subcategorias ou Transações vinculadas.",
+        lambda id_del: deletar_registro_dimensao("dim_categoria", "id_categoria", id_del),
+    )
 
 def formulario_subcategoria():
     st.header("Cadastro e Manutenção de Subcategorias")
@@ -439,27 +428,12 @@ def formulario_subcategoria():
             st.error(f"Erro ao carregar dados do ID. Verifique se o ID existe ou se os nomes das colunas da View estão corretos: {e}")
 
 
-    # --- LÓGICA DE CONFIRMAÇÃO DE EXCLUSÃO ---
-    if st.session_state.get('confirm_delete_id_sub'):
-        id_del = st.session_state.confirm_delete_id_sub
-        nome_del = st.session_state.confirm_delete_nome_sub
-
-        st.markdown("---")
-        st.error(f"⚠️ CONFIRMAÇÃO DE EXCLUSÃO: Tem certeza que deseja EXCLUIR a Subcategoria '{nome_del}' (ID {id_del})? Esta ação é irreversível.")
-
-        col_conf_sim, col_conf_nao = st.columns(2)
-
-        with col_conf_sim:
-            if st.button("SIM, EXCLUIR PERMANENTEMENTE", key="final_delete_sub_sim"):
-                # O deletar_registro_dimensao já lida com o erro de Foreign Key
-                if deletar_registro_dimensao("dim_subcategoria", "id_subcategoria", id_del):
-                    st.success(f"Subcategoria ID {id_del} excluída com sucesso.")
-                    st.session_state.confirm_delete_id_sub = None
-                    st.rerun()
-        with col_conf_nao:
-            if st.button("CANCELAR Exclusão", key="final_delete_sub_nao"):
-                st.session_state.confirm_delete_id_sub = None
-                st.rerun()
+    _bloco_confirmacao_exclusao(
+        'confirm_delete_id_sub',
+        'confirm_delete_nome_sub',
+        "Tem certeza que deseja EXCLUIR a Subcategoria '{nome}' (ID {id})? Esta ação é irreversível.",
+        lambda id_del: deletar_registro_dimensao("dim_subcategoria", "id_subcategoria", id_del),
+    )
 
 def formulario_usuario():
     st.header("Cadastro de Usuário")
@@ -975,13 +949,13 @@ def excluir_transacoes_duplicadas():
                     st.rerun()
 
 def pagina_acerto_controle():
-    st.title("💰 Gestão de Acertos e Rateio")
+    st.title("💰 Gestão de Acertos e Correções")
 
-    # Usamos st.tabs para organizar as funcionalidades
-    tab_detalhe, tab_acerto_multiplo, tab_excluir = st.tabs([
+    tab_detalhe, tab_acerto_multiplo, tab_excluir, tab_corrigir = st.tabs([
         "📊 Detalhe e Rateio de Contas",
         "✅ Acerto Múltiplo",
         "🗑️ Excluir Transação",
+        "🛠️ Corrigir Transação",
     ])
 
     with tab_detalhe:
@@ -992,6 +966,9 @@ def pagina_acerto_controle():
 
     with tab_excluir:
         excluir_transacoes_duplicadas()
+
+    with tab_corrigir:
+        editar_transacao()
 
 def exibir_formulario_edicao(id_transacao):
     st.subheader(f"2. Editando Transação ID: {id_transacao}")
