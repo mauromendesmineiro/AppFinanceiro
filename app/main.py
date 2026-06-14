@@ -32,7 +32,7 @@ def main():
         nome_exibido = st.session_state.get('nome_completo', st.session_state.login)
         st.title(f"Menu Principal - Logado como: {nome_exibido}")
 
-        # BOTÕES PRINCIPAIS (Dashboard, Transação, Acerto, Corrigir) - 2 colunas
+        # BOTÕES PRINCIPAIS
         col1, col2 = st.columns(2) 
 
         with col1:
@@ -79,16 +79,13 @@ def main():
                     if st.button(nome_opcao_b, key=f"btn_cadastro_{nome_limpo_b}", use_container_width=True):
                         st.session_state.menu_selecionado = nome_limpo_b
 
-        # Botões de Logout/Cache
         st.markdown("---")
 
-        # Estilo CSS específico para o botão "🛑 Sair"
         st.markdown(
             """
             <style>
-            /* Seleciona APENAS o penúltimo elemento stButton na sidebar (que é o botão Sair) */
-            [data-testid='stSidebar'] div.stButton:nth-last-child(2) > button {
-                background-color: #ff4b4b; /* Vermelho padrão de erro/Streamlit */
+            [data-testid='stSidebar'] div.stButton:last-child > button {
+                background-color: #ff4b4b;
                 color: white;
                 border-color: #ff4b4b;
             }

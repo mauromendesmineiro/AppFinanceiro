@@ -83,13 +83,6 @@ def consultar_dados(tabela_ou_view, usar_view=True):
 
     return df
 
-def limpar_cache_dados():
-    """Limpa o cache do Streamlit para forçar a recarga dos dados do banco."""
-    # st.cache_data é a decorator que usamos na consultar_dados
-    st.cache_data.clear() 
-    st.success("Cache de dados limpo. Recarregando as análises...")
-    st.rerun()
-
 def inserir_dados(tabela, dados, campos):
     conn = None
     tabela_lower = tabela.lower()

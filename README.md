@@ -11,8 +11,8 @@ O código fica no pacote [`app/`](app/), organizado em módulos:
 | `app/db.py` | Acesso a dados (engine SQLAlchemy, pool e operações de BD) |
 | `app/helpers.py` | Helpers de formatação e logging |
 | `app/auth.py` | Autenticação (bcrypt, login, migração de senha) |
-| `app/forms.py` | Formulários de cadastro/edição e telas de acerto |
-| `app/dashboard.py` | Dashboard (gráficos, projeções e KPIs) |
+| `app/forms.py` | Formulários de cadastro/edição, acerto de contas e correção de transações |
+| `app/dashboard.py` | Dashboard: KPIs do mês, gráficos com filtros de período configuráveis |
 
 ## Requisitos
 
