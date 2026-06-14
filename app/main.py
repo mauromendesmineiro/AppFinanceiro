@@ -81,18 +81,7 @@ def main():
 
         st.markdown("---")
 
-        st.markdown(
-            """
-            <style>
-            [data-testid='stSidebar'] div.stButton:last-child > button {
-                background-color: #ff4b4b;
-                color: white;
-                border-color: #ff4b4b;
-            }
-            </style>""", unsafe_allow_html=True
-        )
-
-        if st.button("🛑 Sair", key="btn_logout", use_container_width=True):
+        if st.button("🛑 Sair", key="btn_logout", type="primary", use_container_width=True):
             st.session_state.logged_in = False
             # Limpa as variáveis de sessão sensíveis
             if 'id_usuario_logado' in st.session_state:
