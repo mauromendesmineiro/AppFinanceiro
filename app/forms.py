@@ -506,7 +506,7 @@ def formulario_salario():
                 )
                 # --------------------------------------------------------
 
-                st.success(f"Salário de R${valor_salario:.2f} registrado para {usuario_selecionado_nome}!")
+                st.success(f"Salário de {valor_salario:.2f} € registrado para {usuario_selecionado_nome}!")
             else:
                 st.warning("O Valor do Salário deve ser maior que zero.")
     # ------------------ FIM FORMULÁRIO ------------------
@@ -540,7 +540,7 @@ def formulario_salario():
 
         # 5. Aplica a Formatação de Moeda
         # Streamlit exibe melhor formatação nativa se o tipo for float.
-        # Se precisar de formatação específica (R$ X.XXX,XX), use st.dataframe.
+        # Se precisar de formatação específica (X.XXX,XX €), use st.dataframe.
         df_exibicao['Valor do Salário'] = df_exibicao['Valor do Salário'].apply(formatar_moeda) 
 
         # 6. Exibe o DataFrame com os nomes de colunas corretos
@@ -727,7 +727,7 @@ def exibir_detalhe_rateio():
         'vl_saldototal': 'Saldo Total'
     }, inplace=True)
 
-    # Exibição do Resumo Total (formatado sem o prefixo R$)
+    # Exibição do Resumo Total (formatado sem o símbolo €)
     if not df_total.empty:
         st.dataframe(
             df_total.style.map(
@@ -762,7 +762,7 @@ def exibir_detalhe_rateio():
     # Ordena o DataFrame por Ano e Mês (crescente)
     df_resumo.sort_values(by=['Ano', 'Mês'], inplace=True)
 
-    # Exibição do Resumo (formatado sem o prefixo R$)
+    # Exibição do Resumo (formatado sem o símbolo €)
     st.dataframe(
         df_resumo.style.map(
             cor_saldo,
@@ -843,7 +843,7 @@ def acerto_multiplo_transacoes():
 
     config = {
         "dt_datatransacao": st.column_config.DatetimeColumn("Data", format="YYYY-MM-DD"),
-        "vl_transacao": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f")
+        "vl_transacao": st.column_config.NumberColumn("Valor (€)", format="%.2f €")
     }
 
     # st.dataframe é o elemento correto para seleção!
@@ -906,7 +906,7 @@ def excluir_transacoes_duplicadas():
 
     config = {
         "dt_datatransacao": st.column_config.DatetimeColumn("Data", format="YYYY-MM-DD"),
-        "vl_transacao": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f"),
+        "vl_transacao": st.column_config.NumberColumn("Valor (€)", format="%.2f €"),
         "id_transacao": st.column_config.NumberColumn("ID"),
         "dsc_transacao": st.column_config.TextColumn("Descrição"),
         "dsc_categoriatransacao": st.column_config.TextColumn("Categoria"),

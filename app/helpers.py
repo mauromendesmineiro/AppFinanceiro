@@ -9,11 +9,11 @@ logging.basicConfig(
 logger = logging.getLogger("app_financeiro")
 
 def formatar_moeda(valor):
-    """Formata um número no padrão monetário brasileiro (1.234,56), sem o prefixo R$."""
+    """Formata um número no padrão monetário europeu (1.234,56), sem o símbolo €."""
     return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def _para_float_br(valor):
-    """Converte um valor possivelmente em string no formato brasileiro para float."""
+    """Converte um valor possivelmente em string no formato europeu (1.234,56) para float."""
     if isinstance(valor, str):
         try:
             return float(valor.replace(".", "").replace(",", "."))

@@ -238,9 +238,9 @@ def dashboard():
     saldo_kpi = receita_kpi - despesa_kpi
 
     col_k1, col_k2, col_k3 = st.columns(3)
-    col_k1.metric("Receitas (mês atual)", f"R$ {formatar_moeda(receita_kpi)}")
-    col_k2.metric("Despesas (mês atual)", f"R$ {formatar_moeda(despesa_kpi)}")
-    col_k3.metric("Saldo (mês atual)", f"R$ {formatar_moeda(saldo_kpi)}", delta=round(saldo_kpi, 2))
+    col_k1.metric("Receitas (mês atual)", f"{formatar_moeda(receita_kpi)} €")
+    col_k2.metric("Despesas (mês atual)", f"{formatar_moeda(despesa_kpi)} €")
+    col_k3.metric("Saldo (mês atual)", f"{formatar_moeda(saldo_kpi)} €", delta=round(saldo_kpi, 2))
 
     st.markdown("---")
 
@@ -418,7 +418,7 @@ def dashboard():
                 color='dsc_categoriatransacao',
                 barmode='stack',
                 title='Distribuição de Despesas por Categoria (Acumulado Anual)',
-                labels={'vl_transacao': 'Valor Acumulado (R$)', 'dsc_categoriatransacao': 'Categoria'},
+                labels={'vl_transacao': 'Valor Acumulado (€)', 'dsc_categoriatransacao': 'Categoria'},
                 color_discrete_sequence=PALETA_CORES, 
                 category_orders={"dsc_categoriatransacao": categoria_ordenada_acumulada}
             )
@@ -540,7 +540,7 @@ def dashboard():
                 color='dsc_subcategoriatransacao',
                 barmode='stack',
                 title='Distribuição de Despesas por Subcategoria (Anual)',
-                labels={'vl_transacao': 'Valor Acumulado (R$)', 'dsc_subcategoriatransacao': 'Subcategoria'},
+                labels={'vl_transacao': 'Valor Acumulado (€)', 'dsc_subcategoriatransacao': 'Subcategoria'},
                 color_discrete_sequence=px.colors.qualitative.Dark24, # Paleta expandida
                 category_orders={"dsc_subcategoriatransacao": subcategoria_ordenada_acumulada}
             )
